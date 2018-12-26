@@ -94,8 +94,8 @@ class IKEv2Session:
             #checksum_i1 = hashlib.sha1(self.peer_spi+self.my_spi+ipaddress.ip_address(self.peer_addr[0]).packed+self.peer_addr[1].to_bytes(2, 'big')).digest()
             #checksum_i2 = hashlib.sha1(self.peer_spi+self.my_spi+ipaddress.ip_address(self.my_addr[0]).packed+self.my_addr[1].to_bytes(2, 'big')).digest()
             # send wrong checksum to make sure NAT enabled
-            response_payloads = [ message.PayloadSA([chosen_proposal]), 
-                                  message.PayloadNONCE(self.my_nonce), 
+            response_payloads = [ message.PayloadSA([chosen_proposal]),
+                                  message.PayloadNONCE(self.my_nonce),
                                   message.PayloadKE(payload_ke.dh_group, public_key),
                                   message.PayloadVENDOR(f'{__title__}-{__version__}'.encode()),
                                   message.PayloadNOTIFY(0, enums.Notify.NAT_DETECTION_DESTINATION_IP, b'', os.urandom(20)),
@@ -172,7 +172,7 @@ class IKEv2Session:
                                       request.get_payload(enums.Payload.TSi),
                                       request.get_payload(enums.Payload.TSr) ]
             else:
-                child = IKEv2Session(chosen_proposal.spi)
+                child = IKEv2Session(self.args, self.sessions, chosen_proposal.spi)
                 child.state = State.ESTABLISHED
                 child.peer_nonce = request.get_payload(enums.Payload.NONCE).nonce
                 child.child_sa = self.child_sa
