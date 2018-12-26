@@ -105,6 +105,8 @@ class IKEv2Session:
             assert self.state == State.INIT_RES_SENT
             request_payload_idi = request.get_payload(enums.Payload.IDi)
             request_payload_auth = request.get_payload(enums.Payload.AUTH)
+            if request_payload_auth is None:
+                raise Exception('EAP not supported')
             auth_data = self.auth_data(self.request_data, self.my_nonce, request_payload_idi, self.peer_crypto.sk_p)
             assert auth_data == request_payload_auth.auth_data
             chosen_child_proposal = request.get_payload(enums.Payload.SA).get_proposal(enums.EncrId.ENCR_AES_CBC)
@@ -268,7 +270,6 @@ class IKEv2_4500(IKEv2_500):
                         for spi, tcp in list(sa.tcp_stack.items()):
                             if tcp.obsolete():
                                 sa.tcp_stack.pop(spi)
-                                print(f'IPv4 TCP {tcp.src_ip}:{tcp.src_port} -> {tcp.dst_ip}:{tcp.dst_port} CLOSE')
                         sa.tcp_stack[key] = tcp = ip.TCPStack(src_ip, src_port, dst_ip, dst_port, reply, self.args.rserver)
                     else:
                         tcp = sa.tcp_stack[key]
