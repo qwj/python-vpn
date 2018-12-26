@@ -73,6 +73,7 @@ class IKEv2Session:
     def create_response(self, exchange, payloads, crypto=None):
         response = message.Message(self.peer_spi, self.my_spi, 2, 0, exchange,
                 True, False, False, self.peer_msgid, payloads)
+        #print(repr(response))
         self.peer_msgid += 1
         self.response_data = response.to_bytes(crypto=crypto)
     def process(self, request, stream):
@@ -106,9 +107,12 @@ class IKEv2Session:
             request_payload_idi = request.get_payload(enums.Payload.IDi)
             request_payload_auth = request.get_payload(enums.Payload.AUTH)
             if request_payload_auth is None:
+                EAP = True
                 raise Exception('EAP not supported')
-            auth_data = self.auth_data(self.request_data, self.my_nonce, request_payload_idi, self.peer_crypto.sk_p)
-            assert auth_data == request_payload_auth.auth_data
+            else:
+                EAP = False
+                auth_data = self.auth_data(self.request_data, self.my_nonce, request_payload_idi, self.peer_crypto.sk_p)
+                assert auth_data == request_payload_auth.auth_data
             chosen_child_proposal = request.get_payload(enums.Payload.SA).get_proposal(enums.EncrId.ENCR_AES_CBC)
             child_sa = self.create_child_key(chosen_child_proposal, self.peer_nonce, self.my_nonce)
             chosen_child_proposal.spi = child_sa.spi_in

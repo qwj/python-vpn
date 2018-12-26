@@ -301,3 +301,12 @@ class IpProto(TypeEnum):
     ICMPV6 = 58
     MH = 135
     RAW = 255
+
+class EAPCode(TypeEnum):
+    Request = 1
+    Response = 2
+    Success = 3
+    Failure = 4
+    Initiate = 5
+    Finish = 6
+

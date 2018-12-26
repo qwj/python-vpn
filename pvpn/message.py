@@ -291,6 +291,20 @@ class PayloadCP(Payload):
     def to_repr(self):
         return f'{self.cftype.name}({", ".join(k.name+"="+(v.hex() or "None") for k, v in self.attrs.items())})'
 
+class PayloadEAP(Payload):
+    def __init__(self, code, data, critical=False):
+        Payload.__init__(self, enums.Payload.EAP, critical)
+        self.code = enums.EAPCode(code)
+        self.data = data
+    def parse_data(self, stream, length):
+        self.code = enums.EAPCode(stream.unpack('>B3x', stream.read(4))[0])
+        self.data = stream.read(length-4)
+    def to_bytes(self):
+        data = bytearray(struct.pack('>BxH', self.code, len(self.data)))
+        return data+self.data
+    def to_repr(self):
+        return f'{self.code.name}({self.data.hex()})'
+
 PayloadClass = {
     enums.Payload.SA: PayloadSA,
     enums.Payload.KE: PayloadKE,
@@ -305,6 +319,7 @@ PayloadClass = {
     enums.Payload.TSr: PayloadTSr,
     enums.Payload.SK: PayloadSK,
     enums.Payload.CP: PayloadCP,
+    enums.Payload.EAP: PayloadEAP,
 }
 
 class Message:
