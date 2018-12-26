@@ -3,8 +3,6 @@ import pproxy
 from . import enums, message, crypto, ip, dns
 from .__doc__ import *
 
-TCP_LIMIT = 150
-
 class State(enum.Enum):
     INITIAL = 0
     INIT_RES_SENT = 1
@@ -267,9 +265,10 @@ class IKEv2_4500(IKEv2_500):
                     #    print(f'IPv4 TCP {src_ip}:{src_port} -> {dst_ip}:{dst_port}', ip_body)
                     key = (str(src_ip), src_port)
                     if key not in sa.tcp_stack:
-                        if len(sa.tcp_stack) > TCP_LIMIT:
-                            x = min(sa.tcp_stack, key=lambda x: sa.tcp_stack[x].update)
-                            sa.tcp_stack.pop(x)
+                        for spi, tcp in list(sa.tcp_stack.items()):
+                            if tcp.obsolete():
+                                sa.tcp_stack.pop(spi)
+                                print(f'IPv4 TCP {tcp.src_ip}:{tcp.src_port} -> {tcp.dst_ip}:{tcp.dst_port} CLOSE')
                         sa.tcp_stack[key] = tcp = ip.TCPStack(src_ip, src_port, dst_ip, dst_port, reply, self.args.rserver)
                     else:
                         tcp = sa.tcp_stack[key]

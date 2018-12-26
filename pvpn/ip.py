@@ -19,7 +19,7 @@ def checksum(data):
     return x.to_bytes(2, 'big')
 
 def make_ipv4(proto, src_ip, dst_ip, body):
-    ip_header = bytearray(struct.pack('>BxH2s2xBB2x4s4s', 0x45, len(body)+20, os.urandom(2), 64, 
+    ip_header = bytearray(struct.pack('>BxH2s2xBB2x4s4s', 0x45, len(body)+20, os.urandom(2), 64,
         proto, src_ip.packed, dst_ip.packed))
     ip_header[10:12] = checksum(ip_header)
     return bytes(ip_header+body)
@@ -84,7 +84,9 @@ class TCPStack:
         self.wait_fast = asyncio.Event()
         self.rto = 3
         self.srtt = self.rttvar = None
-        self.update = None
+        self.update = time.perf_counter()
+    def obsolete(self):
+        return self.state == State.CLOSED and time.perf_counter() - self.update > 120
     def close(self):
         self.state = State.CLOSED
     def calc_rto(self, r):

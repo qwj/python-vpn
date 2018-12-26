@@ -49,7 +49,7 @@ class Proposal:
         data.extend(self.spi)
         for idx, transform in enumerate(self.transforms):
             transform_data = struct.pack('>HH', 0x800e, transform.keylen) if transform.keylen else b''
-            data.extend(struct.pack('>BxHBxH', 0 if idx==len(self.transforms)-1 else 3, 
+            data.extend(struct.pack('>BxHBxH', 0 if idx==len(self.transforms)-1 else 3,
                 len(transform_data)+8, transform.type, transform.id))
             data.extend(transform_data)
         return data
@@ -292,7 +292,7 @@ class PayloadCP(Payload):
         return f'{self.cftype.name}({", ".join(k.name+"="+(v.hex() or "None") for k, v in self.attrs.items())})'
 
 PayloadClass = {
-    enums.Payload.SA: PayloadSA, 
+    enums.Payload.SA: PayloadSA,
     enums.Payload.KE: PayloadKE,
     enums.Payload.IDi: PayloadIDi,
     enums.Payload.IDr: PayloadIDr,
@@ -371,7 +371,7 @@ class Message:
         return f'{self.exchange.name}(spi_i={self.spi_i.hex()}, spi_r={self.spi_r.hex()}, version={self.major}.{self.minor}, ' + \
                 ('is_response, ' if self.is_response else 'is_request, ') + ('can_use_higher_version, ' if self.can_use_higher_version else '') + \
                 ('is_initiator, ' if self.is_initiator else 'is_responder, ') + f'message_id={self.message_id}, ' + \
-                ', '.join(repr(i) for i in self.payloads) + ')'
+                (', '.join(repr(i) for i in self.payloads) or 'NONE') + ')'
     def get_payloads(self, payload_type):
         return [x for x in self.payloads if x.type == payload_type]
     def get_payload(self, payload_type, encrypted=False):
