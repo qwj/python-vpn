@@ -28,7 +28,7 @@ QuickStart
   Serving on UDP :500 :4500...
   ^C
 
-Open the UDP port :500 :4500 to your device. Add "IKEv2 (iOS)"" or "IPSec IKEcv2 PSK (Android)" VPN, write down the id "test" and password "yourpassword". Connect.
+Open the UDP port :500 :4500 to your device. Add "IKEv2 (iOS) (Turn off User Authentication)" or "IPSec IKEv2 PSK (Android)" VPN, write down the id "test" and password "yourpassword". Connect.
 
 You should change the default password to keep higher security. See "pvpn -h" for more options.
 
@@ -36,5 +36,5 @@ Features
 --------
 
 - IKEv2+SPE+NAT Layer3
-- Tunnel TCP/UDP to your proxy
+- Tunnel tcp/udp to your proxy
 
