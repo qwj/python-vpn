@@ -3,6 +3,13 @@ from Crypto.Cipher import AES
 from . import enums
 
 class Prf:
+    DIGESTS_1 = {
+        enums.HashId_1.MD5: (hashlib.md5, 16),
+        enums.HashId_1.SHA: (hashlib.sha1, 20),
+        enums.HashId_1.SHA2_256: (hashlib.sha256, 32),
+        enums.HashId_1.SHA2_384: (hashlib.sha384, 48),
+        enums.HashId_1.SHA2_512: (hashlib.sha512, 64),
+    }
     DIGESTS = {
         enums.PrfId.PRF_HMAC_MD5: (hashlib.md5, 16),
         enums.PrfId.PRF_HMAC_SHA1: (hashlib.sha1, 20),
@@ -11,7 +18,7 @@ class Prf:
         enums.PrfId.PRF_HMAC_SHA2_512: (hashlib.sha512, 64),
     }
     def __init__(self, transform):
-        self.hasher, self.key_size = self.DIGESTS[transform.id]
+        self.hasher, self.key_size = self.DIGESTS[transform] if type(transform) is enums.PrfId else self.DIGESTS_1[transform]
     def prf(self, key, data):
         return hmac.HMAC(key, data, digestmod=self.hasher).digest()
     def prfplus(self, key, seed, size):
@@ -38,7 +45,7 @@ class Integrity:
         if transform is None:
             self.hasher, self.key_size, self.hash_size = None, 0, 0
         else:
-            self.hasher, self.key_size, self.hash_size = self.DIGESTS[transform.id]
+            self.hasher, self.key_size, self.hash_size = self.DIGESTS[transform]
     def compute(self, key, data):
         if self.hasher is None:
             return b''
@@ -46,15 +53,16 @@ class Integrity:
             return hmac.HMAC(key, data, digestmod=self.hasher).digest()[:self.hash_size]
 
 class Cipher:
-    def __init__(self, transform):
-        assert transform.type == enums.Transform.ENCR and transform.id == enums.EncrId.ENCR_AES_CBC
-        self._transform = transform
+    def __init__(self, transform, keylen):
+        assert type(transform) is enums.EncrId and transform == enums.EncrId.ENCR_AES_CBC or \
+               type(transform) is enums.EncrId_1 and transform == enums.EncrId_1.AES_CBC
+        self.keylen = keylen
     @property
     def block_size(self):
         return 16
     @property
     def key_size(self):
-        return self._transform.keylen // 8
+        return self.keylen // 8
     def encrypt(self, key, iv, data):
         return AES.new(key, AES.MODE_CBC, iv=iv).encrypt(data)
     def decrypt(self, key, iv, data):
@@ -62,6 +70,36 @@ class Cipher:
     def generate_iv(self):
         return os.urandom(self.block_size)
 
+class Crypto_1:
+    def __init__(self, cipher, sk_e, iv, prf):
+        self.cipher = cipher
+        self.sk_e = sk_e
+        self.block = self.initblock = iv
+        self.prf = prf
+        self.lastblock = None
+        self.m_id = set()
+    def encrypt(self, plain, m_id):
+        if self.lastblock and m_id not in self.m_id:
+            self.m_id.add(m_id)
+            iv = self.prf.hasher(self.lastblock+m_id.to_bytes(4, 'big')).digest()[:self.cipher.block_size]
+        else:
+            iv = self.block
+        padlen = self.cipher.block_size - ((len(plain)+1) % self.cipher.block_size)
+        plain += b'\x00' * padlen + bytes([padlen])
+        encrypted = self.cipher.encrypt(self.sk_e, iv, bytes(plain))
+        self.block = encrypted[-self.cipher.block_size:]
+        return encrypted
+    def decrypt(self, encrypted, m_id):
+        if self.lastblock and m_id not in self.m_id:
+            self.m_id.add(m_id)
+            iv = self.prf.hasher(self.lastblock+m_id.to_bytes(4, 'big')).digest()[:self.cipher.block_size]
+        else:
+            iv = self.block
+        plain = self.cipher.decrypt(self.sk_e, iv, encrypted)
+        self.block = encrypted[-self.cipher.block_size:]
+        #print(plain)
+        padlen = plain[-1]
+        return plain
 
 class Crypto:
     def __init__(self, cipher, sk_e, integrity, sk_a, prf=None, sk_p=None):

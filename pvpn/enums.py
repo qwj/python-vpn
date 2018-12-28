@@ -8,7 +8,24 @@ class TypeEnum(enum.IntEnum):
         obj._value_ = value
         return obj
 
+class MsgFlag(enum.IntFlag):
+    NONE = 0x00
+    Encryption = 0x01
+    Commit = 0x02
+    Authentication = 0x04
+    Initiator = 0x08
+    CanUseHigherVersion = 0x10
+    Response = 0x20
+
 class Exchange(TypeEnum):
+    IKE_BASE_1 = 1
+    IKE_IDENTITY_1 = 2
+    IKE_AUTH_1 = 3
+    IKE_AGGRESIVE_1 = 4
+    IKE_INFORMATIONAL_1 = 5
+    IKE_TRANSACTION_1 = 6
+    IKE_QUICK_1 = 32
+    IKE_NEW_GROUP_1 = 33
     IKE_SA_INIT = 34
     IKE_AUTH = 35
     CREATE_CHILD_SA = 36
@@ -20,6 +37,28 @@ class Exchange(TypeEnum):
 
 class Payload(TypeEnum):
     NONE = 0
+    SA_1 = 1
+    PROPOSAL_1 = 2
+    TRANSFORM_1 = 3
+    KE_1 = 4
+    ID_1 = 5
+    CERT_1 = 6
+    CERTREQ_1 = 7
+    HASH_1 = 8
+    SIG_1 = 9
+    NONCE_1 = 10
+    NOTIFY_1 = 11
+    DELETE_1 = 12
+    VENDOR_1 = 13
+    CP_1 = 14
+    SAK_1 = 15
+    SAT_1 = 16
+    KD_1 = 17
+    SEQ_1 = 18
+    POP_1 = 19
+    NATD_1 = 20
+    NATO_1 = 21
+    GAP_1 = 22
     SA = 33
     KE = 34
     IDi = 35
@@ -153,14 +192,35 @@ TransformTable = {
 
 class Notify(TypeEnum):
     UNSUPPORTED_CRITICAL_PAYLOAD = 1
+    DOI_NOT_SUPPORTED = 2
+    SITUATION_NOT_SUPPORTED = 3
     INVALID_IKE_SPI = 4
     INVALID_MAJOR_VERSION = 5
+    INVALID_MINOR_VERSION = 6
     INVALID_SYNTAX = 7
+    INVALID_FLAGS = 8
     INVALID_MESSAGE_ID = 9
+    INVALID_PROTOCOL_ID = 10
     INVALID_SPI = 11
+    INVALID_TRANSFORM_ID = 12
+    ATTRIBUTES_NOT_SUPPORTED = 13
     NO_PROPOSAL_CHOSEN = 14
+    BAD_PROPOSAL_SYNTAX = 15
+    PAYLOAD_MALFORMED = 16
     INVALID_KE_PAYLOAD = 17
+    INVALID_ID_INFORMATION = 18
+    INVALID_CERT_ENCODING = 19
+    INVALID_CERTIFICATE = 20
+    CERT_TYPE_UNSUPPORTED = 21
+    INVALID_CERT_AUTHORITY = 22
+    INVALID_HASH_INFORMATION = 23
     AUTHENTICATION_FAILED = 24
+    INVALID_SIGNATURE = 25
+    ADDRESS_NOTIFICATION = 26
+    NOTIFY_SA_LIFETIME = 27
+    CERTIFICATE_UNAVAILABLE = 28
+    UNSUPPORTED_EXCHANGE_TYPE = 29
+    UNEQUAL_PAYLOAD_LENGTHS = 30
     SINGLE_PAIR_REQUIRED = 34
     NO_ADDITIONAL_SAS = 35
     INTERNAL_ADDRESS_FAILURE = 36
@@ -228,12 +288,19 @@ class Notify(TypeEnum):
     USE_PPK = 16435
     PPK_IDENTITY = 16436
     NO_PPK_AUTH = 16437
+    RESPONDER_LIFETIME = 24576
+    REPLAY_STATUS = 24577
+    INITIAL_CONTACT_1 = 24578
 
 class IDType(TypeEnum):
     ID_IPV4_ADDR = 1
     ID_FQDN = 2
     ID_RFC822_ADDR = 3
+    ID_IPV4_ADDR_SUBNET = 4
     ID_IPV6_ADDR = 5
+    ID_IPV6_ADDR_SUBNET = 6
+    ID_IPV4_ADDR_RANGE = 7
+    ID_IPV6_ADDR_RANGE = 8
     ID_DER_ASN1_DN = 9
     ID_DER_ASN1_GN = 10
     ID_KEY_ID = 11
@@ -262,6 +329,7 @@ class CPAttrType(TypeEnum):
     INTERNAL_IP4_NETMASK = 2
     INTERNAL_IP4_DNS = 3
     INTERNAL_IP4_NBNS = 4
+    INTERNAL_ADDRESS_EXPIRY = 5
     INTERNAL_IP4_DHCP = 6
     APPLICATION_VERSION = 7
     INTERNAL_IP6_ADDRESS = 8
@@ -281,6 +349,26 @@ class CPAttrType(TypeEnum):
     TIMEOUT_PERIOD_FOR_LIVENESS_CHECK = 24
     INTERNAL_DNS_DOMAIN = 25
     INTERNAL_DNSSEC_TA = 26
+    XAUTH_TYPE = 16520
+    XAUTH_USER_NAME = 16521
+    XAUTH_USER_PASSWORD = 16522
+    XAUTH_PASSCODE = 16523
+    XAUTH_MESSAGE = 16524
+    XAUTH_CHALLENGE = 16525
+    XAUTH_DOMAIN = 16526
+    XAUTH_STATUS = 16527
+    UNITY_BANNER = 28672
+    UNITY_SAVE_PASSWD = 28673
+    UNITY_DEF_DOMAIN = 28674
+    UNITY_SPLITDNS_NAME = 28675
+    UNITY_SPLIT_INCLUDE = 28676
+    UNITY_NATT_PORT = 28677
+    UNITY_LOCAL_LAN = 28678
+    UNITY_PFS = 28679
+    UNITY_FW_TYPE = 28680
+    UNITY_BACKUP_SERVERS = 28681
+    UNITY_DDNS_HOSTNAME = 28682
+    CICSO_UNKNOWN_SEEN_ON_IPHONE = 28683
 
 class TSType(TypeEnum):
     TS_IPV4_ADDR_RANGE = 7
@@ -303,10 +391,73 @@ class IpProto(TypeEnum):
     RAW = 255
 
 class EAPCode(TypeEnum):
-    Request = 1
-    Response = 2
-    Success = 3
-    Failure = 4
-    Initiate = 5
-    Finish = 6
+    REQUEST = 1
+    RESPONSE = 2
+    SUCCESS = 3
+    FAILURE = 4
+    INITIATE = 5
+    FINISH = 6
+
+class TransformAttr(TypeEnum):
+    ENCR = 1
+    HASH = 2
+    AUTH = 3
+    DH = 4
+    DH_TYPE = 5
+    DH_PRIME = 6
+    GENERATOR_1 = 7
+    GENERATOR_2 = 8
+    CURVE_A = 9
+    CURVE_B = 10
+    LIFETYPE = 11
+    DURATION = 12
+    PRF = 13
+    KEY_LENGTH = 14
+    FIELD_SIZE = 15
+    DH_ORDER = 16
+
+class EncrId_1(TypeEnum):
+    DES_CBC = 1
+    IDEA_CBC = 2
+    BLOWFISH_CBC = 3
+    RC5_R16_B64_CBC = 4
+    _3DES_CBC = 5
+    CAST_CBC = 6
+    AES_CBC = 7
+    CAMELLIA_CBC = 8
+
+class HashId_1(TypeEnum):
+    MD5 = 1
+    SHA = 2
+    TIGER = 3
+    SHA2_256 = 4
+    SHA2_384 = 5
+    SHA2_512 = 6
+
+class AuthId_1(TypeEnum):
+    PSK = 1
+    DSS = 2
+    RSA = 3
+    ENCR_RSA = 4
+    RE_ENCR_RSA = 5
+    ECDSA_SHA_256 = 9
+    ECDSA_SHA_384 = 10
+    ECDSA_SHA_512 = 11
+    XAUTHInitPreShared = 65001
+    XAUTHRespPreShared = 65002
+    XAUTHInitDSS       = 65003
+    XAUTHRespDSS       = 65004
+    XAUTHInitRSA       = 65005
+    XAUTHRespRSA       = 65006
+    XAUTHInitRSAEncryption = 65007
+    XAUTHRespRSAEncryption = 65008
+    XAUTHInitRSARevisedEncryption = 65009
+    XAUTHRespRSARevisedEncryption = 65010
+
+TransformTable_1 = {
+    TransformAttr.ENCR: EncrId_1,
+    TransformAttr.HASH: HashId_1,
+    TransformAttr.AUTH: AuthId_1,
+    TransformAttr.DH: DhId,
+}
 

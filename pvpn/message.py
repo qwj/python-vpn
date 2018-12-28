@@ -21,6 +21,198 @@ class Payload:
     def __repr__(self):
         return f'{self.type.name}({"critical, " if self.critical else ""}{self.to_repr()})'
 
+def attr_parse(stream, length, attr_type_cls):
+    values = collections.OrderedDict()
+    while length > 0:
+        attr_type, value = struct.unpack('>HH', stream.read(4))
+        length -= 4
+        if attr_type & 0x8000:
+            attr_type &= 0x7FFF
+        else:
+            length -= value
+            value = stream.read(value)
+        values[attr_type_cls(attr_type)] = value
+    return values
+
+def attr_to_bytes(values):
+    return b''.join((struct.pack('>HH', i|0x8000, j) if isinstance(j, int) else struct.pack('>HH', i, len(j))+j) for i, j in values.items())
+
+Transform_1 = collections.namedtuple('Transform', 'num id values')
+
+class Proposal_1:
+    def __init__(self, num, protocol, spi, transforms):
+        self.num = num
+        self.protocol = enums.Protocol(protocol)
+        self.spi = spi
+        self.transforms = transforms
+    @classmethod
+    def parse(cls, stream):
+        num, protocol, spi_size, n_transforms = struct.unpack('>BBBB', stream.read(4))
+        spi = stream.read(spi_size)
+        transforms = []
+        more = True
+        while more:
+            more, length, tnum, id = struct.unpack('>BxHBB2x', stream.read(8))
+            values = attr_parse(stream, length-8, enums.TransformAttr)
+            for attr_type in values:
+                if attr_type in enums.TransformTable_1:
+                    values[attr_type] = enums.TransformTable_1[attr_type](values[attr_type])
+            transforms.append(Transform_1(tnum, enums.Protocol(id), values))
+        return Proposal_1(num, protocol, spi, transforms)
+    def to_bytes(self):
+        data = bytearray()
+        data.extend(struct.pack('>BBBB', self.num, self.protocol, len(self.spi), len(self.transforms)))
+        data.extend(self.spi)
+        for idx, transform in enumerate(self.transforms):
+            transform_data = attr_to_bytes(transform.values)
+            data.extend(struct.pack('>BxHBB2x', 0 if idx==len(self.transforms)-1 else 3,
+                len(transform_data)+8, transform.num, transform.id))
+            data.extend(transform_data)
+        return data
+    def to_repr(self):
+        return f'{self.protocol.name}:{self.num}(spi={self.spi.hex() or "None"}, ' + ', '.join(
+            f'{i.id.name}:{i.num}({", ".join(j.name+"="+str(k) for j,k in i.values.items())})' for i in self.transforms) + ')'
+
+class PayloadSA_1(Payload):
+    def __init__(self, doi, situation, proposals):
+        Payload.__init__(self, enums.Payload.SA_1)
+        self.doi = doi
+        self.situation = situation
+        self.proposals = proposals
+    def parse_data(self, stream, length):
+        self.doi, self.situation = struct.unpack('>II', stream.read(8))
+        self.proposals = []
+        more = True
+        while more:
+            more, length = struct.unpack('>BxH', stream.read(4))
+            self.proposals.append(Proposal_1.parse(stream))
+    def to_bytes(self):
+        data = bytearray(struct.pack('>II', self.doi, self.situation))
+        for idx, proposal in enumerate(self.proposals):
+            proposal_data = proposal.to_bytes()
+            data.extend(struct.pack('>BxH', 0 if idx==len(self.proposals)-1 else 2, len(proposal_data)+4))
+            data.extend(proposal_data)
+        return data
+    def to_repr(self):
+        return f'doi={self.doi}, situation={self.situation}, ' + ', '.join(i.to_repr() for i in self.proposals)
+
+class PayloadKE_1(Payload):
+    def __init__(self, ke_data):
+        Payload.__init__(self, enums.Payload.KE_1)
+        self.ke_data = ke_data
+    def parse_data(self, stream, length):
+        self.ke_data = stream.read(length)
+    def to_bytes(self):
+        return self.ke_data
+    def to_repr(self):
+        return f'{self.ke_data.hex()}'
+
+class PayloadID_1(Payload):
+    def __init__(self, id_type, id_data, prot=0, port=0, critical=False):
+        Payload.__init__(self, enums.Payload.ID_1, critical)
+        self.id_type = enums.IDType(id_type)
+        self.prot = enums.IpProto(prot)
+        self.port = port
+        self.id_data = id_data
+    def parse_data(self, stream, length):
+        id_type, prot, self.port = struct.unpack('>BBH', stream.read(4))
+        self.id_type = enums.IDType(id_type)
+        self.prot = enums.IpProto(prot)
+        self.id_data = stream.read(length-4)
+    def to_bytes(self):
+        return struct.pack('>BBH', self.id_type, self.prot, self.port) + self.id_data
+    def _id_data_str(self):
+        if self.id_type in (enums.IDType.ID_RFC822_ADDR, enums.IDType.ID_FQDN):
+            return self.id_data.decode()
+        elif self.id_type in (enums.IDType.ID_IPV4_ADDR, enums.IDType.ID_IPV4_ADDR_SUBNET, enums.IDType.ID_IPV6_ADDR):
+            return str(ipaddress.ip_address(self.id_data))+(f':{self.port}({self.prot.name})' if self.prot!=0 else '')
+        else:
+            return self.id_data.hex()
+    def to_repr(self):
+        return f'{self.id_type.name}({self._id_data_str()})'
+
+class PayloadHASH_1(Payload):
+    def __init__(self, data):
+        Payload.__init__(self, enums.Payload.HASH_1)
+        self.data = data
+    def parse_data(self, stream, length):
+        self.data = stream.read(length)
+    def to_bytes(self):
+        return self.data
+    def to_repr(self):
+        return f'{self.data.hex()}'
+
+class PayloadNONCE_1(Payload):
+    def __init__(self, nonce=None):
+        Payload.__init__(self, enums.Payload.NONCE_1)
+        self.nonce = os.urandom(random.randrange(16, 256)) if nonce is None else nonce
+    def parse_data(self, stream, length):
+        self.nonce = stream.read(length)
+    def to_bytes(self):
+        return self.nonce
+    def to_repr(self):
+        return f'{self.nonce.hex()}'
+
+class PayloadNOTIFY_1(Payload):
+    def __init__(self, doi, protocol, notify, spi, data):
+        Payload.__init__(self, enums.Payload.NOTIFY_1)
+        self.doi = doi
+        self.protocol = enums.Protocol(protocol)
+        self.notify = enums.Notify(notify)
+        self.spi = spi
+        self.data = data
+    def parse_data(self, stream, length):
+        self.doi, protocol, spi_size, notify = struct.unpack('>IBBH', stream.read(8))
+        self.protocol = enums.Protocol(protocol)
+        self.notify = enums.Notify(notify)
+        self.spi = stream.read(spi_size)
+        self.data = stream.read(length-8-spi_size)
+    def to_bytes(self):
+        data = bytearray(struct.pack('>IBBH', self.doi, self.protocol, len(self.spi), self.notify))
+        data.extend(self.spi)
+        data.extend(self.data)
+        return data
+    def to_repr(self):
+        return f'{self.notify.name}(doi={self.doi}, {"protocol="+self.protocol.name+", " if self.protocol else ""}{"spi="+self.spi.hex()+", " if self.spi else ""}{"data="+self.data.hex() if self.data else ""})'
+
+class PayloadVENDOR_1(Payload):
+    def __init__(self, vendor):
+        Payload.__init__(self, enums.Payload.VENDOR_1, False)
+        self.vendor = vendor
+    def parse_data(self, stream, length):
+        self.vendor = stream.read(length)
+    def to_bytes(self):
+        return self.vendor
+    def to_repr(self):
+        return f'{self.vendor.hex()}'
+
+class PayloadCP_1(Payload):
+    def __init__(self, type, attrs, critical=False, identifier=0):
+        Payload.__init__(self, enums.Payload.CP_1, critical)
+        self.cftype = enums.CFGType(type)
+        self.identifier = identifier
+        self.attrs = attrs
+    def parse_data(self, stream, length):
+        cftype, self.identifier = struct.unpack('>BxH', stream.read(4))
+        self.cftype = enums.CFGType(cftype)
+        self.attrs = attr_parse(stream, length-4, enums.CPAttrType)
+    def to_bytes(self):
+        return struct.pack('>BxH', self.cftype, self.identifier) + attr_to_bytes(self.attrs)
+    def to_repr(self):
+        return f'{self.cftype.name}(id={self.identifier}, {", ".join(k.name+"="+(str(v) if type(v) is int else (v.hex() or "None")) for k, v in self.attrs.items())})'
+
+class PayloadNATD_1(Payload):
+    def __init__(self, data):
+        Payload.__init__(self, enums.Payload.NATD_1, False)
+        self.data = data
+    def parse_data(self, stream, length):
+        self.data = stream.read(length)
+    def to_bytes(self):
+        return self.data
+    def to_repr(self):
+        return f'{self.data.hex()}'
+
+
 Transform = collections.namedtuple('Transform', 'type id keylen')
 
 class Proposal:
@@ -37,10 +229,8 @@ class Proposal:
         more = True
         while more:
             more, length, type, id = struct.unpack('>BxHBxH', stream.read(8))
-            keylen = None
-            for attr_type, value in struct.iter_unpack('>HH', stream.read(length-8)):
-                if attr_type & 0x7FFF == 0xe:
-                    keylen = value
+            values = attr_parse(stream, length-8, enums.TransformAttr)
+            keylen = values.get(enums.TransformAttr.KEY_LENGTH)
             transforms.append(Transform(enums.Transform(type), enums.TransformTable[type](id), keylen))
         return Proposal(num, protocol, spi, transforms)
     def to_bytes(self):
@@ -106,31 +296,15 @@ class PayloadKE(Payload):
     def to_repr(self):
         return f'{self.dh_group}, {self.ke_data.hex()}'
 
-class PayloadIDi(Payload):
-    def __init__(self, id_type, id_data, critical=False):
-        Payload.__init__(self, enums.Payload.IDi, critical)
-        self.id_type = enums.IDType(id_type)
-        self.id_data = id_data
-    def parse_data(self, stream, length):
-        self.id_type = enums.IDType(struct.unpack('>B3x', stream.read(4))[0])
-        self.id_data = stream.read(length-4)
-    def to_bytes(self):
-        return struct.pack('>B3x', self.id_type) + self.id_data
-    def _id_data_str(self):
-        if self.id_type in (enums.IDType.ID_RFC822_ADDR, enums.IDType.ID_FQDN):
-            return self.id_data.decode()
-        elif self.id_type in (enums.IDType.ID_IPV4_ADDR, enums.IDType.ID_IPV6_ADDR):
-            return str(ipaddress.ip_address(self.id_data))
-        else:
-            return self.id_data.hex()
-    def to_repr(self):
-        return f'{self.id_type.name}({self._id_data_str()})'
+class PayloadIDi(PayloadID_1):
+    def __init__(self, id_type, id_data, prot=0, port=0, critical=False):
+        PayloadID_1.__init__(self, id_type, id_data, prot, port, critical)
+        self.type = enums.Payload.IDi
 
-class PayloadIDr(PayloadIDi):
-    def __init__(self, id_type, id_data, critical=False):
-        Payload.__init__(self, enums.Payload.IDr, critical)
-        self.id_type = enums.IDType(id_type)
-        self.id_data = id_data
+class PayloadIDr(PayloadID_1):
+    def __init__(self, id_type, id_data, prot=0, port=0, critical=False):
+        PayloadID_1.__init__(self, id_type, id_data, prot, port, critical)
+        self.type = enums.Payload.IDr
 
 class PayloadAUTH(Payload):
     def __init__(self, method, auth_data, critical=False):
@@ -270,26 +444,10 @@ class PayloadSK(Payload):
     def to_repr(self):
         return self.ciphertext.hex()
 
-class PayloadCP(Payload):
+class PayloadCP(PayloadCP_1):
     def __init__(self, type, attrs, critical=False):
-        Payload.__init__(self, enums.Payload.CP, critical)
-        self.cftype = enums.CFGType(type)
-        self.attrs = attrs
-    def parse_data(self, stream, length):
-        self.cftype = enums.CFGType(struct.unpack('>B3x', stream.read(4))[0])
-        self.attrs = {}
-        while length > 4:
-            attr_type, attr_len = struct.unpack('>HH', stream.read(4))
-            self.attrs[enums.CPAttrType(attr_type&0x7FFF)] = stream.read(attr_len)
-            length -= 4+attr_len
-    def to_bytes(self):
-        data = bytearray(struct.pack('>B3x', self.cftype))
-        for type, value in self.attrs.items():
-            data.extend(struct.pack('>HH', type, len(value)))
-            data.extend(value)
-        return data
-    def to_repr(self):
-        return f'{self.cftype.name}({", ".join(k.name+"="+(v.hex() or "None") for k, v in self.attrs.items())})'
+        PayloadCP_1.__init__(self, type, attrs, critical)
+        self.type = enums.Payload.CP
 
 class PayloadEAP(Payload):
     def __init__(self, code, data, critical=False):
@@ -300,12 +458,21 @@ class PayloadEAP(Payload):
         self.code = enums.EAPCode(stream.unpack('>B3x', stream.read(4))[0])
         self.data = stream.read(length-4)
     def to_bytes(self):
-        data = bytearray(struct.pack('>BxH', self.code, len(self.data)))
+        data = struct.pack('>BxH', self.code, len(self.data)+4)
         return data+self.data
     def to_repr(self):
         return f'{self.code.name}({self.data.hex()})'
 
 PayloadClass = {
+    enums.Payload.SA_1: PayloadSA_1,
+    enums.Payload.KE_1: PayloadKE_1,
+    enums.Payload.ID_1: PayloadID_1,
+    enums.Payload.HASH_1: PayloadHASH_1,
+    enums.Payload.NONCE_1: PayloadNONCE_1,
+    enums.Payload.NOTIFY_1: PayloadNOTIFY_1,
+    enums.Payload.VENDOR_1: PayloadVENDOR_1,
+    enums.Payload.CP_1: PayloadCP_1,
+    enums.Payload.NATD_1: PayloadNATD_1,
     enums.Payload.SA: PayloadSA,
     enums.Payload.KE: PayloadKE,
     enums.Payload.IDi: PayloadIDi,
@@ -323,26 +490,23 @@ PayloadClass = {
 }
 
 class Message:
-    def __init__(self, spi_i, spi_r, major, minor, exchange, is_response,
-                 can_use_higher_version, is_initiator, message_id, payloads=None, *, first_payload=None):
+    def __init__(self, spi_i, spi_r, version, exchange, flag, message_id, payloads=None, *, first_payload=None):
         self.spi_i = spi_i
         self.spi_r = spi_r
-        self.major = major
-        self.minor = minor
+        self.version = version
         self.exchange = enums.Exchange(exchange)
-        self.is_response = is_response
-        self.can_use_higher_version = can_use_higher_version
-        self.is_initiator = is_initiator
+        self.flag = enums.MsgFlag(flag)
         self.message_id = message_id
         self.first_payload = first_payload
         self.payloads = [] if payloads is None else payloads
     @classmethod
     def parse(cls, stream):
         header = struct.unpack('>8s8s4B2L', stream.read(28))
-        message = Message(header[0], header[1], header[3]>>4, header[3]&0x0F, header[4],
-            bool(header[5]&0x20), bool(header[5] & 0x10), bool(header[5] & 0x08), header[6], first_payload=header[2])
-        return message
+        return Message(header[0], header[1], header[3], header[4], header[5], header[6], first_payload=header[2])
     def parse_payloads(self, stream, *, crypto=None):
+        if self.flag & enums.MsgFlag.Encryption:
+            #print(repr(self))
+            stream = io.BytesIO(crypto.decrypt(stream.read(), self.message_id))
         next_payload = self.first_payload
         while next_payload:
             payload_id = next_payload
@@ -358,34 +522,38 @@ class Message:
                 payload.next_payload = next_payload
                 next_payload = enums.Payload.NONE
             self.payloads.append(payload)
-    def to_bytes(self, *, crypto=None):
-        first_payload = self.payloads[0].type if self.payloads else enums.Payload.NONE
+    @classmethod
+    def encode_payloads(cls, payloads):
         data = bytearray()
-        for idx, payload in enumerate(self.payloads):
+        for idx, payload in enumerate(payloads):
             payload_data = payload.to_bytes()
-            if idx < len(self.payloads) - 1:
-                next_payload = self.payloads[idx+1].type
+            if idx < len(payloads) - 1:
+                next_payload = payloads[idx+1].type
             else:
                 next_payload = enums.Payload.NONE
             data.extend(struct.pack('>BxH', next_payload, len(payload_data) + 4))
             data.extend(payload_data)
-        if crypto:
+        return data
+    def to_bytes(self, *, crypto=None):
+        first_payload = self.payloads[0].type if self.payloads else enums.Payload.NONE
+        data = self.encode_payloads(self.payloads)
+        if crypto and self.version == 0x10:
+            data = bytearray(crypto.encrypt(data, self.message_id))
+            self.flag |= enums.MsgFlag.Encryption
+        elif crypto and self.version == 0x20:
             payload_sk = PayloadSK(crypto.encrypt(data))
             payload_data = payload_sk.to_bytes()
             data = bytearray(struct.pack('>BxH', first_payload, len(payload_data) + 4) + payload_data)
             first_payload = enums.Payload.SK
         data[0:0] = struct.pack(
             '>8s8s4B2L', self.spi_i, self.spi_r, first_payload,
-            (self.major << 4 | self.minor & 0x0F), self.exchange,
-            (self.is_response << 5 | self.can_use_higher_version << 4 | self.is_initiator << 3),
+            self.version, self.exchange, self.flag,
             self.message_id, 28+len(data))
-        if crypto:
+        if crypto and self.version == 0x20:
             crypto.add_checksum(data)
         return data
     def __repr__(self):
-        return f'{self.exchange.name}(spi_i={self.spi_i.hex()}, spi_r={self.spi_r.hex()}, version={self.major}.{self.minor}, ' + \
-                ('is_response, ' if self.is_response else 'is_request, ') + ('can_use_higher_version, ' if self.can_use_higher_version else '') + \
-                ('is_initiator, ' if self.is_initiator else 'is_responder, ') + f'message_id={self.message_id}, ' + \
+        return f'{self.exchange.name}(spi_i={self.spi_i.hex()}, spi_r={self.spi_r.hex()}, version={self.version>>4}.{self.version&0xF}, flag={self.flag!s}, message_id={self.message_id}, ' + \
                 (', '.join(repr(i) for i in self.payloads) or 'NONE') + ')'
     def get_payloads(self, payload_type):
         return [x for x in self.payloads if x.type == payload_type]
