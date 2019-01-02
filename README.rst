@@ -15,7 +15,7 @@ IKE(v1,v2) PSK+ESP(UDP) VPN implemented in pure Python.
 Introduction
 ------------
 
-All VPN softwares are stupid, clumsy and hard to config. So comes **python-vpn**.
+All VPN softwares are stupid, clumsy and hard to configure. So comes **python-vpn**.
 
 QuickStart
 ----------
@@ -32,12 +32,15 @@ Open the UDP port :500 :4500 to your device. Add "IKEv2 (iOS) (Turn off User Aut
 
 You should change the default password to keep higher security. See "pvpn -h" for more options.
 
+**python-vpn** don't add network interfaces or iptables to your system. Enter to start and Ctrl+C to stop.
+
 Features
 --------
 
-- IKEv1, IKEv2 PSK support, auto-detect
+- Clean, lightweight and easy to use
+- IKEv1, IKEv2 PSK support with auto-detection
 - TCP stack implementation
-- Tunnel tcp/udp to your proxy
+- TCP/UDP tunnel support
 
 Protocols
 ---------
