@@ -10,6 +10,9 @@ class State(enum.Enum):
     DELETED = 3
     KE_SENT = 4
     HASH_SENT = 5
+    AUTH_SET = 6
+    CONF_SENT = 7
+    CHILD_SA_SENT = 8
 
 class ChildSa:
     def __init__(self, spi_in, spi_out, crypto_in, crypto_out):
@@ -89,13 +92,13 @@ class IKEv1Session:
             response_payload_id = message.PayloadID_1(enums.IDType.ID_FQDN, self.args.userid.encode())
             hash_r = prf.prf(self.skeyid, self.my_public_key+self.peer_public_key+self.my_spi+self.peer_spi+self.sa_bytes+response_payload_id.to_bytes())
             response_payloads = [response_payload_id, message.PayloadHASH_1(hash_r)]
-            #response_payloads.append(message.PayloadCP_1(enums.CFGType.CFG_REQUEST, 
+            #response_payloads.append(message.PayloadCP_1(enums.CFGType.CFG_REQUEST,
             #       {enums.CPAttrType.XAUTH_TYPE:b'\x01', enums.CPAttrType.XAUTH_USER_NAME: b'', enums.CPAttrType.XAUTH_USER_PASSWORD: b'', enums.CPAttrType.XAUTH_CHALLENGE: os.urandom(16)}))
             self.create_response(enums.Exchange.IKE_IDENTITY_1, response_payloads, crypto=self.crypto)
             self.crypto.lastblock = self.crypto.block
             self.state = State.HASH_SENT
 
-            attrs = { enums.CPAttrType.XAUTH_TYPE: 0, 
+            attrs = { enums.CPAttrType.XAUTH_TYPE: 0,
                       enums.CPAttrType.XAUTH_USER_NAME: b'',
                       enums.CPAttrType.XAUTH_USER_PASSWORD: b'',
                     }
@@ -107,51 +110,49 @@ class IKEv1Session:
             response_payloads.insert(0, message.PayloadHASH_1(hash_r))
             self.create_response(enums.Exchange.IKE_TRANSACTION_1, response_payloads, message_id=message_id, crypto=self.crypto)
         elif request.exchange == enums.Exchange.IKE_TRANSACTION_1:
-            assert self.state == State.HASH_SENT
             hash_i = self.crypto.prf.prf(self.skeyid_a, request.message_id.to_bytes(4, 'big') + message.Message.encode_payloads(request.payloads[1:]))
             assert hash_i == request.get_payload(enums.Payload.HASH_1).data
             payload_cp = request.get_payload(enums.Payload.CP_1)
             if enums.CPAttrType.XAUTH_USER_NAME in payload_cp.attrs:
+                assert self.state == State.HASH_SENT
                 response_payloads = [message.PayloadCP_1(enums.CFGType.CFG_SET, {enums.CPAttrType.XAUTH_STATUS: 1})]
-                # attrs = {  
-                #           enums.CPAttrType.XAUTH_USER_NAME: b'test',
-                #           enums.CPAttrType.XAUTH_USER_PASSWORD: b'test',
-                #         }
-                #response_payloads = [message.PayloadCP_1(enums.CFGType.CFG_REPLY, attrs)]
                 message_id = request.message_id
+                self.state = State.AUTH_SET
             elif enums.CPAttrType.INTERNAL_IP4_ADDRESS in payload_cp.attrs:
+                assert self.state == State.AUTH_SET
                 attrs = { enums.CPAttrType.INTERNAL_IP4_ADDRESS: ipaddress.ip_address('1.0.0.1').packed,
                           enums.CPAttrType.INTERNAL_IP4_NETMASK: ipaddress.ip_address('1.0.0.255').packed,
-                          enums.CPAttrType.INTERNAL_IP4_DNS: ipaddress.ip_address(self.args.dns).packed, 
-                          enums.CPAttrType.INTERNAL_IP4_NBNS: ipaddress.ip_address('1.0.0.2').packed,
-                          #enums.CPAttrType.INTERNAL_ADDRESS_EXPIRY: 3600,
-                          #enums.CPAttrType.APPLICATION_VERSION: f'{__title__}-{__version__}'.encode(), 
-                          enums.CPAttrType.UNITY_SPLIT_INCLUDE: b'\x00\x00\x00\x00\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00',
-                          enums.CPAttrType.UNITY_LOCAL_LAN: b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00',
+                          enums.CPAttrType.INTERNAL_IP4_DNS: ipaddress.ip_address(self.args.dns).packed,
                         }
                 response_payloads = [message.PayloadCP_1(enums.CFGType.CFG_REPLY, attrs, identifier=payload_cp.identifier)]
                 message_id = request.message_id
+                self.state = State.CONF_SENT
             else:
-                #message_id = random.randrange(1<<32)
-                #self.create_response(enums.Exchange.IKE_QUICK_1, [], message_id=message_id, crypto=self.crypto)
-                return []
-            #response_payloads = [message.PayloadCP_1(enums.CFGType.CFG_REQUEST, 
-            #       {enums.CPAttrType.XAUTH_TYPE: b'\x01', enums.CPAttrType.XAUTH_USER_NAME: b'', enums.CPAttrType.XAUTH_USER_PASSWORD: b'', enums.CPAttrType.XAUTH_CHALLENGE: os.urandom(16)})]
-            #response_payloads = [message.PayloadCP_1(enums.CFGType.CFG_REPLY, 
-            #       {enums.CPAttrType.XAUTH_TYPE: b'\x00\x00\x00\x01', enums.CPAttrType.XAUTH_USER_NAME: b'', enums.CPAttrType.XAUTH_USER_PASSWORD: b'', enums.CPAttrType.XAUTH_CHALLENGE: os.urandom(16)})]
+                raise Exception('Unknown CP Exchange')
             buf = message.Message.encode_payloads(response_payloads)
             hash_r = self.crypto.prf.prf(self.skeyid_a, message_id.to_bytes(4, 'big') + buf)
             response_payloads.insert(0, message.PayloadHASH_1(hash_r))
             self.create_response(enums.Exchange.IKE_TRANSACTION_1, response_payloads, message_id=message_id, crypto=self.crypto)
         elif request.exchange == enums.Exchange.IKE_QUICK_1:
-            request_payload_sa = request.get_payload(enums.Payload.SA_1)
-            del request_payload_sa.proposals[0].transforms[1:]
-            response_payloads = request.payloads
-            message_id = request.message_id
-            buf = message.Message.encode_payloads(response_payloads[1:])
-            hash_r = self.crypto.prf.prf(self.skeyid_a, message_id.to_bytes(4, 'big') + buf)
-            response_payloads[0] = message.PayloadHASH_1(hash_r)
-            self.create_response(enums.Exchange.IKE_QUICK_1, response_payloads, message_id=message_id, crypto=self.crypto)
+            if len(request.payloads) == 1 and request.payloads[0].type == enums.Payload.HASH_1:
+                assert self.state == State.QUICK_SENT
+                self.state = State.ESTABLISHED
+            else:
+                assert self.state == State.CONF_SENT
+                peer_nonce = request.get_payload(enums.Payload.NONCE_1).nonce
+                my_nonce = os.urandom(len(peer_nonce))
+                request.get_payload(enums.Payload.NONCE_1).nonce = my_nonce
+                chosen_proposal = request.get_payload(enums.Payload.SA_1).proposals[0]
+                del chosen_proposal.transforms[1:]
+                peer_spi = chosen_proposal.spi
+                chosen_proposal.spi = my_spi = os.urandom(4)
+                response_payloads = request.payloads
+                message_id = request.message_id
+                buf = message.Message.encode_payloads(response_payloads[1:])
+                hash_r = self.crypto.prf.prf(self.skeyid_a, message_id.to_bytes(4, 'big') + peer_nonce + buf)
+                response_payloads[0] = message.PayloadHASH_1(hash_r)
+                self.create_response(enums.Exchange.IKE_QUICK_1, response_payloads, message_id=message_id, crypto=self.crypto)
+                self.state = State.QUICK_SENT
         else:
             raise Exception(f'unhandled request {request!r}')
         return self.response_data

@@ -416,6 +416,22 @@ class TransformAttr(TypeEnum):
     FIELD_SIZE = 15
     DH_ORDER = 16
 
+class ESPAttr(TypeEnum):
+    LD_TYPE = 1
+    LD = 2
+    GRP_DESC = 3
+    ENC_MODE = 4
+    AUTH = 5
+    KEY_LENGTH = 6
+    KEY_ROUND = 7
+    COMP_DICT_SIZE = 8
+    COMP_PRIVALG = 9
+    SECCTX = 10
+
+ESPTable_1 = {
+    ESPAttr.AUTH: IntegId,
+}
+
 class EncrId_1(TypeEnum):
     DES_CBC = 1
     IDEA_CBC = 2

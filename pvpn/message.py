@@ -53,11 +53,18 @@ class Proposal_1:
         more = True
         while more:
             more, length, tnum, id = struct.unpack('>BxHBB2x', stream.read(8))
-            values = attr_parse(stream, length-8, enums.TransformAttr)
-            for attr_type in values:
-                if attr_type in enums.TransformTable_1:
-                    values[attr_type] = enums.TransformTable_1[attr_type](values[attr_type])
-            transforms.append(Transform_1(tnum, enums.Protocol(id), values))
+            if protocol == enums.Protocol.ESP:
+                values = attr_parse(stream, length-8, enums.ESPAttr)
+                for attr_type in values:
+                    if attr_type in enums.ESPTable_1:
+                        values[attr_type] = enums.ESPTable_1[attr_type](values[attr_type])
+                transforms.append(Transform_1(tnum, enums.EncrId(id), values))
+            else:
+                values = attr_parse(stream, length-8, enums.TransformAttr)
+                for attr_type in values:
+                    if attr_type in enums.TransformTable_1:
+                        values[attr_type] = enums.TransformTable_1[attr_type](values[attr_type])
+                transforms.append(Transform_1(tnum, enums.Protocol(id), values))
         return Proposal_1(num, protocol, spi, transforms)
     def to_bytes(self):
         data = bytearray()
@@ -124,7 +131,7 @@ class PayloadID_1(Payload):
     def _id_data_str(self):
         if self.id_type in (enums.IDType.ID_RFC822_ADDR, enums.IDType.ID_FQDN):
             return self.id_data.decode()
-        elif self.id_type in (enums.IDType.ID_IPV4_ADDR, enums.IDType.ID_IPV4_ADDR_SUBNET, enums.IDType.ID_IPV6_ADDR):
+        elif self.id_type in (enums.IDType.ID_IPV4_ADDR, enums.IDType.ID_IPV6_ADDR):
             return str(ipaddress.ip_address(self.id_data))+(f':{self.port}({self.prot.name})' if self.prot!=0 else '')
         else:
             return self.id_data.hex()
