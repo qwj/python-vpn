@@ -30,8 +30,22 @@ class Prf:
             result.extend(temp)
             i += 1
         return result[:size]
+    def prfplus_1(self, key, seed, size):
+        result = bytearray()
+        temp = bytes()
+        while len(result) < size:
+            temp = self.prf(key, temp + seed)
+            result.extend(temp)
+        return result[:size]
 
 class Integrity:
+    DIGESTS_1 = {
+        enums.IntegId_1.AUTH_HMAC_MD5: (hashlib.md5, 16, 12),
+        enums.IntegId_1.AUTH_HMAC_SHA1: (hashlib.sha1, 20, 12),
+        enums.IntegId_1.AUTH_HMAC_SHA2_256: (hashlib.sha256, 32, 16),
+        enums.IntegId_1.AUTH_HMAC_SHA2_384: (hashlib.sha384, 48, 24),
+        enums.IntegId_1.AUTH_HMAC_SHA2_512: (hashlib.sha512, 64, 32),
+    }
     DIGESTS = {
         enums.IntegId.AUTH_HMAC_MD5_96: (hashlib.md5, 16, 12),
         enums.IntegId.AUTH_HMAC_SHA1_96: (hashlib.sha1, 20, 12),
@@ -42,15 +56,9 @@ class Integrity:
         enums.IntegId.AUTH_HMAC_SHA2_512_256: (hashlib.sha512, 64, 32),
     }
     def __init__(self, transform):
-        if transform is None:
-            self.hasher, self.key_size, self.hash_size = None, 0, 0
-        else:
-            self.hasher, self.key_size, self.hash_size = self.DIGESTS[transform]
+        self.hasher, self.key_size, self.hash_size = self.DIGESTS[transform] if type(transform) is enums.IntegId else self.DIGESTS_1[transform]
     def compute(self, key, data):
-        if self.hasher is None:
-            return b''
-        else:
-            return hmac.HMAC(key, data, digestmod=self.hasher).digest()[:self.hash_size]
+        return hmac.HMAC(key, data, digestmod=self.hasher).digest()[:self.hash_size]
 
 class Cipher:
     def __init__(self, transform, keylen):
@@ -70,45 +78,17 @@ class Cipher:
     def generate_iv(self):
         return os.urandom(self.block_size)
 
-class Crypto_1:
-    def __init__(self, cipher, sk_e, iv, prf):
-        self.cipher = cipher
-        self.sk_e = sk_e
-        self.block = self.initblock = iv
-        self.prf = prf
-        self.lastblock = None
-        self.m_id = set()
-    def encrypt(self, plain, m_id):
-        if self.lastblock and m_id not in self.m_id:
-            self.m_id.add(m_id)
-            iv = self.prf.hasher(self.lastblock+m_id.to_bytes(4, 'big')).digest()[:self.cipher.block_size]
-        else:
-            iv = self.block
-        padlen = self.cipher.block_size - ((len(plain)+1) % self.cipher.block_size)
-        plain += b'\x00' * padlen + bytes([padlen])
-        encrypted = self.cipher.encrypt(self.sk_e, iv, bytes(plain))
-        self.block = encrypted[-self.cipher.block_size:]
-        return encrypted
-    def decrypt(self, encrypted, m_id):
-        if self.lastblock and m_id not in self.m_id:
-            self.m_id.add(m_id)
-            iv = self.prf.hasher(self.lastblock+m_id.to_bytes(4, 'big')).digest()[:self.cipher.block_size]
-        else:
-            iv = self.block
-        plain = self.cipher.decrypt(self.sk_e, iv, encrypted)
-        self.block = encrypted[-self.cipher.block_size:]
-        #print(plain)
-        padlen = plain[-1]
-        return plain
-
 class Crypto:
-    def __init__(self, cipher, sk_e, integrity, sk_a, prf=None, sk_p=None):
+    def __init__(self, cipher, sk_e, integrity=None, sk_a=None, prf=None, sk_p=None, *, iv=None):
         self.cipher = cipher
         self.sk_e = sk_e
         self.integrity = integrity
         self.sk_a = sk_a
         self.prf = prf
         self.sk_p = sk_p
+        self.iv = iv
+        self.last_iv = None
+        self.m_id = set()
     def decrypt_esp(self, encrypted):
         iv = encrypted[:self.cipher.block_size]
         ciphertext = encrypted[self.cipher.block_size:len(encrypted)-self.integrity.hash_size]
@@ -122,6 +102,25 @@ class Crypto:
         plain += b'\x00' * padlen + bytes([padlen, next_header])
         encrypted = self.cipher.encrypt(self.sk_e, bytes(iv), bytes(plain))
         return iv + encrypted + bytes(self.integrity.hash_size)
+    def encrypt_1(self, plain, m_id):
+        if self.last_iv and m_id not in self.m_id:
+            self.m_id.add(m_id)
+            self.iv = self.prf.hasher(self.last_iv+m_id.to_bytes(4, 'big')).digest()[:self.cipher.block_size]
+        padlen = self.cipher.block_size - ((len(plain)+1) % self.cipher.block_size)
+        plain += b'\x00' * padlen + bytes([padlen])
+        encrypted = self.cipher.encrypt(self.sk_e, self.iv, bytes(plain))
+        self.iv = encrypted[-self.cipher.block_size:]
+        return encrypted
+    def decrypt_1(self, encrypted, m_id):
+        if self.last_iv and m_id not in self.m_id:
+            self.m_id.add(m_id)
+            self.iv = self.prf.hasher(self.last_iv+m_id.to_bytes(4, 'big')).digest()[:self.cipher.block_size]
+        plain = self.cipher.decrypt(self.sk_e, self.iv, encrypted)
+        self.iv = encrypted[-self.cipher.block_size:]
+        #print(plain)
+        padlen = plain[-1]
+        # do not remove padding according to ios bug
+        return plain
     def decrypt(self, encrypted):
         iv = encrypted[:self.cipher.block_size]
         ciphertext = encrypted[self.cipher.block_size:len(encrypted)-self.integrity.hash_size]

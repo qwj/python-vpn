@@ -10,12 +10,12 @@ python-vpn
 .. |Hit-Count| image:: http://hits.dwyl.io/qwj/python-vpn.svg
    :target: https://pypi.python.org/pypi/pvpn/
 
-IKEv2+SPE+NAT Layer3 VPN implemented in pure Python.
+IKE(v1,v2) PSK+ESP(UDP) VPN implemented in pure Python.
 
 Introduction
 ------------
 
-All VPN softwares are stupid, clumsy and hard to configure. So comes **python-vpn**.
+All VPN softwares are stupid, clumsy and hard to config. So comes **python-vpn**.
 
 QuickStart
 ----------
@@ -23,7 +23,7 @@ QuickStart
 .. code:: rst
 
   $ pip3 install pvpn
-  Successfully installed pvpn-0.0.1
+  Successfully installed pvpn-0.0.5
   $ pvpn -p yourpassword
   Serving on UDP :500 :4500...
   ^C
@@ -35,6 +35,17 @@ You should change the default password to keep higher security. See "pvpn -h" fo
 Features
 --------
 
-- IKEv2+SPE+NAT Layer3
+- IKEv1, IKEv2 PSK support, auto-detect
+- TCP stack implementation
 - Tunnel tcp/udp to your proxy
 
+Protocols
+---------
+
++-------------------+----------------+-------------------+
+| Name              | iOS            | Android           |
++===================+================+===================+
+| IKEv1 PSK ✔       | IPsec          | "IPSec Xauth PSK" |
++-------------------+----------------+-------------------+
+| IKEv2 PSK ✔       | IKEv2          | "IPSec IKEv2 PSK" |
++-------------------+----------------+-------------------+

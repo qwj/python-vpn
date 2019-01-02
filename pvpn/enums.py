@@ -19,13 +19,13 @@ class MsgFlag(enum.IntFlag):
 
 class Exchange(TypeEnum):
     IKE_BASE_1 = 1
-    IKE_IDENTITY_1 = 2
+    IDENTITY_1 = 2
     IKE_AUTH_1 = 3
     IKE_AGGRESIVE_1 = 4
-    IKE_INFORMATIONAL_1 = 5
-    IKE_TRANSACTION_1 = 6
-    IKE_QUICK_1 = 32
-    IKE_NEW_GROUP_1 = 33
+    INFORMATIONAL_1 = 5
+    TRANSACTION_1 = 6
+    QUICK_1 = 32
+    NEW_GROUP_1 = 33
     IKE_SA_INIT = 34
     IKE_AUTH = 35
     CREATE_CHILD_SA = 36
@@ -291,6 +291,10 @@ class Notify(TypeEnum):
     RESPONDER_LIFETIME = 24576
     REPLAY_STATUS = 24577
     INITIAL_CONTACT_1 = 24578
+    ISAKMP_NTYPE_R_U_THERE = 36136
+    ISAKMP_NTYPE_R_U_THERE_ACK = 36137
+    ISAKMP_NTYPE_LOAD_BALANCE = 40501
+    ISAKMP_NTYPE_HEARTBEAT = 40503
 
 class IDType(TypeEnum):
     ID_IPV4_ADDR = 1
@@ -428,8 +432,28 @@ class ESPAttr(TypeEnum):
     COMP_PRIVALG = 9
     SECCTX = 10
 
+class EncModeId_1(TypeEnum):
+    ANY = 0
+    TUNNEL = 1
+    TRNS = 2
+    UDPTUNNEL_RFC = 3
+    UDPTRNS_RFC = 4
+    UDPTUNNEL_DRAFT = 61443
+    UDPTRNS_DRAFT = 61444
+
+class IntegId_1(TypeEnum):
+    AUTH_NONE = 0
+    AUTH_HMAC_MD5 = 1
+    AUTH_HMAC_SHA1 = 2
+    AUTH_DES_MAC = 3
+    AUTH_KPDK = 4
+    AUTH_HMAC_SHA2_256 = 5
+    AUTH_HMAC_SHA2_384 = 6
+    AUTH_HMAC_SHA2_512 = 7
+
 ESPTable_1 = {
-    ESPAttr.AUTH: IntegId,
+    ESPAttr.ENC_MODE: EncModeId_1,
+    ESPAttr.AUTH: IntegId_1,
 }
 
 class EncrId_1(TypeEnum):

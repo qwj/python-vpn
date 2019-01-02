@@ -182,6 +182,25 @@ class PayloadNOTIFY_1(Payload):
     def to_repr(self):
         return f'{self.notify.name}(doi={self.doi}, {"protocol="+self.protocol.name+", " if self.protocol else ""}{"spi="+self.spi.hex()+", " if self.spi else ""}{"data="+self.data.hex() if self.data else ""})'
 
+class PayloadDELETE_1(Payload):
+    def __init__(self, doi, protocol, spis):
+        Payload.__init__(self, enums.Payload.DELETE_1)
+        self.doi = doi
+        self.protocol = enums.Protocol(protocol)
+        self.spis = spis
+    def parse_data(self, stream, length):
+        self.doi, protocol, spi_size, num_spis = struct.unpack('>IBBH', stream.read(8))
+        self.protocol = enums.Protocol(protocol)
+        self.spis = [stream.read(spi_size) for i in range(num_spis)]
+    def to_bytes(self):
+        data = bytearray()
+        data.extend(struct.pack('>IBBH', self.doi, self.protocol, len(self.spis[0]) if self.spis else 0, len(self.spis)))
+        for spi in self.spis:
+            data.extend(spi)
+        return data
+    def to_repr(self):
+        return f'{self.protocol.name}(doi={self.doi}, {", ".join(i.hex() for i in self.spis)})'
+
 class PayloadVENDOR_1(Payload):
     def __init__(self, vendor):
         Payload.__init__(self, enums.Payload.VENDOR_1, False)
@@ -477,6 +496,7 @@ PayloadClass = {
     enums.Payload.HASH_1: PayloadHASH_1,
     enums.Payload.NONCE_1: PayloadNONCE_1,
     enums.Payload.NOTIFY_1: PayloadNOTIFY_1,
+    enums.Payload.DELETE_1: PayloadDELETE_1,
     enums.Payload.VENDOR_1: PayloadVENDOR_1,
     enums.Payload.CP_1: PayloadCP_1,
     enums.Payload.NATD_1: PayloadNATD_1,
@@ -513,7 +533,7 @@ class Message:
     def parse_payloads(self, stream, *, crypto=None):
         if self.flag & enums.MsgFlag.Encryption:
             #print(repr(self))
-            stream = io.BytesIO(crypto.decrypt(stream.read(), self.message_id))
+            stream = io.BytesIO(crypto.decrypt_1(stream.read(), self.message_id))
         next_payload = self.first_payload
         while next_payload:
             payload_id = next_payload
@@ -545,7 +565,7 @@ class Message:
         first_payload = self.payloads[0].type if self.payloads else enums.Payload.NONE
         data = self.encode_payloads(self.payloads)
         if crypto and self.version == 0x10:
-            data = bytearray(crypto.encrypt(data, self.message_id))
+            data = bytearray(crypto.encrypt_1(data, self.message_id))
             self.flag |= enums.MsgFlag.Encryption
         elif crypto and self.version == 0x20:
             payload_sk = PayloadSK(crypto.encrypt(data))
