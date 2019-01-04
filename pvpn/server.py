@@ -43,19 +43,31 @@ class IKEv1Session:
         self.state = State.INITIAL
         self.child_sa = []
         self.sessions[self.my_spi] = self
-    def create_response(self, exchange, payloads, message_id=0, crypto=None):
+    def response(self, exchange, payloads, message_id=0, *, crypto=None, hashmsg=None):
+        if hashmsg:
+            message_id = message_id or random.randrange(1<<32)
+            buf = (b'' if hashmsg is True else hashmsg) + message.Message.encode_payloads(payloads)
+            hash_r = self.crypto.prf.prf(self.skeyid_a, message_id.to_bytes(4, 'big') + buf)
+            payloads.insert(0, message.PayloadHASH_1(hash_r))
         response = message.Message(self.peer_spi, self.my_spi, 0x10, exchange,
                 enums.MsgFlag.NONE, message_id, payloads)
         print(repr(response))
-        self.response_data.append(response.to_bytes(crypto=crypto))
-    def process(self, request, stream):
-        #if request.message_id == self.peer_msgid - 1:
-        #    return self.response_data
-        #elif request.message_id != self.peer_msgid:
-        #    return
+        return response.to_bytes(crypto=crypto)
+    def check_hash(self, request):
+        payload_hash = request.payloads.pop(0)
+        assert payload_hash.type == enums.Payload.HASH_1
+        hash_i = self.crypto.prf.prf(self.skeyid_a, request.message_id.to_bytes(4, 'big') + message.Message.encode_payloads(request.payloads))
+        assert hash_i == payload_hash.data
+    def xauth_init(self):
+        attrs = { enums.CPAttrType.XAUTH_TYPE: 0,
+                  enums.CPAttrType.XAUTH_USER_NAME: b'',
+                  enums.CPAttrType.XAUTH_USER_PASSWORD: b'',
+                }
+        response_payloads = [message.PayloadCP_1(enums.CFGType.CFG_REQUEST, attrs)]
+        return self.response(enums.Exchange.TRANSACTION_1, response_payloads, crypto=self.crypto, hashmsg=True)
+    def process(self, request, stream, reply):
         request.parse_payloads(stream, crypto=self.crypto)
         print(repr(request))
-        self.response_data = []
         if request.exchange == enums.Exchange.IDENTITY_1 and request.get_payload(enums.Payload.SA_1):
             assert self.state == State.INITIAL
             request_payload_sa = request.get_payload(enums.Payload.SA_1)
@@ -63,7 +75,7 @@ class IKEv1Session:
             self.transform = request_payload_sa.proposals[0].transforms[0].values
             del request_payload_sa.proposals[0].transforms[1:]
             response_payloads = request.payloads
-            self.create_response(enums.Exchange.IDENTITY_1, response_payloads)
+            reply(self.response(enums.Exchange.IDENTITY_1, response_payloads))
             self.state = State.SA_SENT
         elif request.exchange == enums.Exchange.IDENTITY_1 and request.get_payload(enums.Payload.KE_1):
             assert self.state == State.SA_SENT
@@ -80,7 +92,7 @@ class IKEv1Session:
             self.skeyid_e = prf.prf(self.skeyid, self.skeyid_a+self.shared_secret+self.peer_spi+self.my_spi+bytes([2]))
             iv = prf.hasher(self.peer_public_key+self.my_public_key).digest()[:cipher.block_size]
             self.crypto = crypto.Crypto(cipher, self.skeyid_e[:cipher.key_size], prf=prf, iv=iv)
-            self.create_response(enums.Exchange.IDENTITY_1, response_payloads)
+            reply(self.response(enums.Exchange.IDENTITY_1, response_payloads))
             self.state = State.KE_SENT
         elif request.exchange == enums.Exchange.IDENTITY_1 and request.get_payload(enums.Payload.ID_1):
             assert self.state == State.KE_SENT
@@ -91,82 +103,60 @@ class IKEv1Session:
             response_payload_id = message.PayloadID_1(enums.IDType.ID_FQDN, self.args.userid.encode())
             hash_r = prf.prf(self.skeyid, self.my_public_key+self.peer_public_key+self.my_spi+self.peer_spi+self.sa_bytes+response_payload_id.to_bytes())
             response_payloads = [response_payload_id, message.PayloadHASH_1(hash_r)]
-            self.create_response(enums.Exchange.IDENTITY_1, response_payloads, crypto=self.crypto)
+            reply(self.response(enums.Exchange.IDENTITY_1, response_payloads, crypto=self.crypto))
             self.crypto.last_iv = self.crypto.iv
             self.state = State.HASH_SENT
-
-            attrs = { enums.CPAttrType.XAUTH_TYPE: 0,
-                      enums.CPAttrType.XAUTH_USER_NAME: b'',
-                      enums.CPAttrType.XAUTH_USER_PASSWORD: b'',
-                    }
-            #attrs = { enums.CPAttrType.XAUTH_STATUS: 1 }
-            message_id = random.randrange(1<<32)
-            response_payloads = [message.PayloadCP_1(enums.CFGType.CFG_REQUEST, attrs)]
-            buf = message.Message.encode_payloads(response_payloads)
-            hash_r = self.crypto.prf.prf(self.skeyid_a, message_id.to_bytes(4, 'big') + buf)
-            response_payloads.insert(0, message.PayloadHASH_1(hash_r))
-            self.create_response(enums.Exchange.TRANSACTION_1, response_payloads, message_id=message_id, crypto=self.crypto)
+            reply(self.xauth_init())
         elif request.exchange == enums.Exchange.TRANSACTION_1:
-            hash_i = self.crypto.prf.prf(self.skeyid_a, request.message_id.to_bytes(4, 'big') + message.Message.encode_payloads(request.payloads[1:]))
-            assert hash_i == request.get_payload(enums.Payload.HASH_1).data
+            self.check_hash(request)
             payload_cp = request.get_payload(enums.Payload.CP_1)
             if enums.CPAttrType.XAUTH_USER_NAME in payload_cp.attrs:
                 assert self.state == State.HASH_SENT
-                response_payloads = [message.PayloadCP_1(enums.CFGType.CFG_SET, {enums.CPAttrType.XAUTH_STATUS: 1})]
-                message_id = request.message_id
+                response_payloads = [ message.PayloadCP_1(enums.CFGType.CFG_SET, {enums.CPAttrType.XAUTH_STATUS: 1}) ]
                 self.state = State.AUTH_SET
             elif enums.CPAttrType.INTERNAL_IP4_ADDRESS in payload_cp.attrs:
                 assert self.state == State.AUTH_SET
                 attrs = { enums.CPAttrType.INTERNAL_IP4_ADDRESS: ipaddress.ip_address('1.0.0.1').packed,
-                          enums.CPAttrType.INTERNAL_IP4_NETMASK: ipaddress.ip_address('1.0.0.255').packed,
                           enums.CPAttrType.INTERNAL_IP4_DNS: ipaddress.ip_address(self.args.dns).packed,
                         }
-                response_payloads = [message.PayloadCP_1(enums.CFGType.CFG_REPLY, attrs, identifier=payload_cp.identifier)]
-                message_id = request.message_id
+                response_payloads = [ message.PayloadCP_1(enums.CFGType.CFG_REPLY, attrs, identifier=payload_cp.identifier) ]
                 self.state = State.CONF_SENT
             elif payload_cp.cftype == enums.CFGType.CFG_ACK:
-                return []
+                return
             else:
                 raise Exception('Unknown CP Exchange')
-            buf = message.Message.encode_payloads(response_payloads)
-            hash_r = self.crypto.prf.prf(self.skeyid_a, message_id.to_bytes(4, 'big') + buf)
-            response_payloads.insert(0, message.PayloadHASH_1(hash_r))
-            self.create_response(enums.Exchange.TRANSACTION_1, response_payloads, message_id=message_id, crypto=self.crypto)
+            reply(self.response(enums.Exchange.TRANSACTION_1, response_payloads, request.message_id, crypto=self.crypto, hashmsg=True))
+        elif request.exchange == enums.Exchange.QUICK_1 and len(request.payloads) == 1:
+            assert request.payloads[0].type == enums.Payload.HASH_1
+            assert self.state == State.CHILD_SA_SENT
+            self.state = State.ESTABLISHED
         elif request.exchange == enums.Exchange.QUICK_1:
-            if len(request.payloads) == 1 and request.payloads[0].type == enums.Payload.HASH_1:
-                assert self.state == State.CHILD_SA_SENT
-                self.state = State.ESTABLISHED
-            else:
-                assert self.state == State.CONF_SENT
-                peer_nonce = request.get_payload(enums.Payload.NONCE_1).nonce
-                my_nonce = os.urandom(len(peer_nonce))
-                request.get_payload(enums.Payload.NONCE_1).nonce = my_nonce
-                chosen_proposal = request.get_payload(enums.Payload.SA_1).proposals[0]
-                del chosen_proposal.transforms[1:]
-                peer_spi = chosen_proposal.spi
-                chosen_proposal.spi = my_spi = os.urandom(4)
-                response_payloads = request.payloads
-                message_id = request.message_id
-                buf = message.Message.encode_payloads(response_payloads[1:])
-                hash_r = self.crypto.prf.prf(self.skeyid_a, message_id.to_bytes(4, 'big') + peer_nonce + buf)
-                response_payloads[0] = message.PayloadHASH_1(hash_r)
-                self.create_response(enums.Exchange.QUICK_1, response_payloads, message_id=message_id, crypto=self.crypto)
-                transform = chosen_proposal.transforms[0].values
-                cipher = crypto.Cipher(chosen_proposal.transforms[0].id, transform[enums.ESPAttr.KEY_LENGTH])
-                integ = crypto.Integrity(transform[enums.ESPAttr.AUTH])
-                keymat = self.crypto.prf.prfplus_1(self.skeyid_d, bytes([chosen_proposal.protocol])+my_spi+peer_nonce+my_nonce, integ.key_size+cipher.key_size)
-                sk_ei, sk_ai = struct.unpack('>{0}s{1}s'.format(cipher.key_size, integ.key_size), keymat)
-                keymat = self.crypto.prf.prfplus_1(self.skeyid_d, bytes([chosen_proposal.protocol])+peer_spi+peer_nonce+my_nonce, integ.key_size+cipher.key_size)
-                sk_er, sk_ar = struct.unpack('>{0}s{1}s'.format(cipher.key_size, integ.key_size), keymat)
-                crypto_in = crypto.Crypto(cipher, sk_ei, integ, sk_ai)
-                crypto_out = crypto.Crypto(cipher, sk_er, integ, sk_ar)
-                child_sa = ChildSa(my_spi, peer_spi, crypto_in, crypto_out)
-                self.sessions[my_spi] = child_sa
-                self.child_sa.append(child_sa)
-                self.state = State.CHILD_SA_SENT
+            assert self.state == State.CONF_SENT
+            self.check_hash(request)
+            payload_nonce = request.get_payload(enums.Payload.NONCE_1)
+            peer_nonce = payload_nonce.nonce
+            payload_nonce.nonce = my_nonce = os.urandom(len(peer_nonce))
+            chosen_proposal = request.get_payload(enums.Payload.SA_1).proposals[0]
+            del chosen_proposal.transforms[1:]
+            peer_spi = chosen_proposal.spi
+            chosen_proposal.spi = my_spi = os.urandom(4)
+            reply(self.response(enums.Exchange.QUICK_1, request.payloads, request.message_id, crypto=self.crypto, hashmsg=peer_nonce))
+
+            transform = chosen_proposal.transforms[0].values
+            cipher = crypto.Cipher(chosen_proposal.transforms[0].id, transform[enums.ESPAttr.KEY_LENGTH])
+            integ = crypto.Integrity(transform[enums.ESPAttr.AUTH])
+            keymat = self.crypto.prf.prfplus_1(self.skeyid_d, bytes([chosen_proposal.protocol])+my_spi+peer_nonce+my_nonce, integ.key_size+cipher.key_size)
+            sk_ei, sk_ai = struct.unpack('>{0}s{1}s'.format(cipher.key_size, integ.key_size), keymat)
+            keymat = self.crypto.prf.prfplus_1(self.skeyid_d, bytes([chosen_proposal.protocol])+peer_spi+peer_nonce+my_nonce, integ.key_size+cipher.key_size)
+            sk_er, sk_ar = struct.unpack('>{0}s{1}s'.format(cipher.key_size, integ.key_size), keymat)
+            crypto_in = crypto.Crypto(cipher, sk_ei, integ, sk_ai)
+            crypto_out = crypto.Crypto(cipher, sk_er, integ, sk_ar)
+            child_sa = ChildSa(my_spi, peer_spi, crypto_in, crypto_out)
+            self.sessions[my_spi] = child_sa
+            self.child_sa.append(child_sa)
+            self.state = State.CHILD_SA_SENT
         elif request.exchange == enums.Exchange.INFORMATIONAL_1:
-            hash_i = self.crypto.prf.prf(self.skeyid_a, request.message_id.to_bytes(4, 'big') + message.Message.encode_payloads(request.payloads[1:]))
-            assert hash_i == request.get_payload(enums.Payload.HASH_1).data
+            self.check_hash(request)
             response_payloads = []
             delete_payload = request.get_payload(enums.Payload.DELETE_1)
             notify_payload = request.get_payload(enums.Payload.NOTIFY_1)
@@ -194,16 +184,18 @@ class IKEv1Session:
                 notify_payload.notify = enums.Notify.ISAKMP_NTYPE_R_U_THERE_ACK
                 response_payloads.append(notify_payload)
                 message_id = request.message_id
-                message_id = random.randrange(1<<32)
+                message_id = None
+            elif notify_payload and notify_payload.notify == enums.Notify.INITIAL_CONTACT_1:
+                notify_payload.notify = enums.Notify.INITIAL_CONTACT_1
+                response_payloads.append(notify_payload)
+                message_id = request.message_id
             else:
                 raise Exception(f'unhandled informational {request!r}')
-            buf = message.Message.encode_payloads(response_payloads)
-            hash_r = self.crypto.prf.prf(self.skeyid_a, message_id.to_bytes(4, 'big') + buf)
-            response_payloads.insert(0, message.PayloadHASH_1(hash_r))
-            self.create_response(enums.Exchange.INFORMATIONAL_1, response_payloads, message_id=message_id, crypto=self.crypto)
+            reply(self.response(enums.Exchange.INFORMATIONAL_1, response_payloads, message_id, crypto=self.crypto, hashmsg=True))
+            if notify_payload and notify_payload.notify == enums.Notify.INITIAL_CONTACT_1:
+                reply(self.xauth_init())
         else:
             raise Exception(f'unhandled request {request!r}')
-        return self.response_data
 
 class IKEv2Session:
     def __init__(self, args, sessions, peer_spi):
@@ -251,17 +243,19 @@ class IKEv2Session:
     def auth_data(self, message_data, nonce, payload, sk_p):
         prf = self.peer_crypto.prf.prf
         return prf(prf(self.args.passwd.encode(), b'Key Pad for IKEv2'), message_data+nonce+prf(sk_p, payload.to_bytes()))
-    def create_response(self, exchange, payloads, crypto=None):
+    def response(self, exchange, payloads, *, crypto=None):
         response = message.Message(self.peer_spi, self.my_spi, 0x20, exchange,
                 enums.MsgFlag.Response, self.peer_msgid, payloads)
         #print(repr(response))
         self.peer_msgid += 1
         self.response_data = response.to_bytes(crypto=crypto)
-    def process(self, request, stream):
+        return self.response_data
+    def process(self, request, stream, reply):
         if request.message_id == self.peer_msgid - 1:
-            return [self.response_data]
+            reply(self.response_data)
+            return
         elif request.message_id != self.peer_msgid:
-            return []
+            return
         request.parse_payloads(stream, crypto=self.peer_crypto)
         print(repr(request))
         if request.exchange == enums.Exchange.IKE_SA_INIT:
@@ -271,16 +265,13 @@ class IKEv2Session:
             payload_ke = request.get_payload(enums.Payload.KE)
             public_key, shared_secret = crypto.DiffieHellman(payload_ke.dh_group, payload_ke.ke_data)
             self.create_key(chosen_proposal, shared_secret)
-            #checksum_i1 = hashlib.sha1(self.peer_spi+self.my_spi+ipaddress.ip_address(self.peer_addr[0]).packed+self.peer_addr[1].to_bytes(2, 'big')).digest()
-            #checksum_i2 = hashlib.sha1(self.peer_spi+self.my_spi+ipaddress.ip_address(self.my_addr[0]).packed+self.my_addr[1].to_bytes(2, 'big')).digest()
-            # send wrong checksum to make sure NAT enabled
             response_payloads = [ message.PayloadSA([chosen_proposal]),
                                   message.PayloadNONCE(self.my_nonce),
                                   message.PayloadKE(payload_ke.dh_group, public_key),
                                   message.PayloadVENDOR(f'{__title__}-{__version__}'.encode()),
                                   message.PayloadNOTIFY(0, enums.Notify.NAT_DETECTION_DESTINATION_IP, b'', os.urandom(20)),
                                   message.PayloadNOTIFY(0, enums.Notify.NAT_DETECTION_SOURCE_IP, b'', os.urandom(20)) ]
-            self.create_response(enums.Exchange.IKE_SA_INIT, response_payloads)
+            reply(self.response(enums.Exchange.IKE_SA_INIT, response_payloads))
             self.state = State.SA_SENT
             self.request_data = stream.getvalue()
         elif request.exchange == enums.Exchange.IKE_AUTH:
@@ -307,10 +298,9 @@ class IKEv2Session:
                                   message.PayloadAUTH(enums.AuthMethod.PSK, auth_data) ]
             if request.get_payload(enums.Payload.CP):
                 attrs = { enums.CPAttrType.INTERNAL_IP4_ADDRESS: ipaddress.ip_address('1.0.0.1').packed,
-                          enums.CPAttrType.INTERNAL_IP4_NETMASK: ipaddress.ip_address('1.0.0.255').packed,
                           enums.CPAttrType.INTERNAL_IP4_DNS: ipaddress.ip_address(self.args.dns).packed, }
                 response_payloads.append(message.PayloadCP(enums.CFGType.CFG_REPLY, attrs))
-            self.create_response(enums.Exchange.IKE_AUTH, response_payloads, self.my_crypto)
+            reply(self.response(enums.Exchange.IKE_AUTH, response_payloads, crypto=self.my_crypto))
             self.state = State.ESTABLISHED
         elif request.exchange == enums.Exchange.INFORMATIONAL:
             assert self.state == State.ESTABLISHED
@@ -336,7 +326,7 @@ class IKEv2Session:
                 response_payloads.append(message.PayloadDELETE(delete_payload.protocol, spis))
             else:
                 raise Exception(f'unhandled informational {request!r}')
-            self.create_response(enums.Exchange.INFORMATIONAL, response_payloads, self.my_crypto)
+            reply(self.response(enums.Exchange.INFORMATIONAL, response_payloads, crypto=self.my_crypto))
         elif request.exchange == enums.Exchange.CREATE_CHILD_SA:
             assert self.state == State.ESTABLISHED
             chosen_proposal = request.get_payload(enums.Payload.SA).get_proposal(enums.EncrId.ENCR_AES_CBC)
@@ -369,10 +359,9 @@ class IKEv2Session:
                 response_payloads = [ message.PayloadSA([chosen_proposal]),
                                       message.PayloadNONCE(child.my_nonce),
                                       message.PayloadKE(payload_ke.dh_group, public_key) ]
-            self.create_response(enums.Exchange.CREATE_CHILD_SA, response_payloads, self.my_crypto)
+            reply(self.response(enums.Exchange.CREATE_CHILD_SA, response_payloads, crypto=self.my_crypto))
         else:
             raise Exception(f'unhandled request {request!r}')
-        return [self.response_data]
 
 IKE_HEADER = b'\x00\x00\x00\x00'
 
@@ -393,8 +382,7 @@ class IKE_500(asyncio.DatagramProtocol):
             session = self.sessions.get(request.spi_r)
             if session is None:
                 return
-        for response in session.process(request, stream):
-            self.transport.sendto(response_header+response, addr)
+        session.process(request, stream, lambda response: self.transport.sendto(response_header+response, addr))
 
 class SPE_4500(IKE_500):
     def datagram_received(self, data, addr):
