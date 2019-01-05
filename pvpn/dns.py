@@ -300,6 +300,10 @@ class DNSHeader(Struct):
 class DNSQuestion(Struct):
     STRUCT = "LHH"
     ATTRS = ('qname', 'qtype', 'qclass')
+    def __eq__(self, other):
+        return str(self.qname) == str(other.qname) and self.qtype == other.qtype and self.qclass == other.qclass
+    def __hash__(self):
+        return hash((str(self.qname), self.qtype, self.qclass))
 
 class EDNSOption(Struct):
     STRUCT = "HS"
@@ -382,6 +386,10 @@ class CNAME(Struct):
     STRUCT = "L"
     ATTRS = ('label',)
 
+class DNAME(Struct):
+    STRUCT = "L"
+    ATTRS = ('label',)
+
 class PTR(CNAME):
     pass
 
@@ -409,5 +417,26 @@ class RRSIG(Struct):
     ATTRS = ('covered', 'algorithm', 'labels', 'orig_ttl', 'sig_exp', 'sig_inc', 'key_tag', 'name', 'sig')
     ZONES = {'sig_exp': make_time, 'sig_inc': make_time}
 
-RDMAP = dict(CNAME=CNAME, A=A, AAAA=AAAA, TXT=TXT, MX=MX, PTR=PTR, SOA=SOA, NS=NS,
+RDMAP = dict(CNAME=CNAME, DNAME=DNAME, A=A, AAAA=AAAA, TXT=TXT, MX=MX, PTR=PTR, SOA=SOA, NS=NS,
              NAPTR=NAPTR, SRV=SRV, DNSKEY=DNSKEY, RRSIG=RRSIG)
+
+class DNSCache(object):
+    def __init__(self):
+        self.cache = {}
+        self.rdns = {}
+    def query(self, record):
+        if len(record.questions) == 1:
+            if record.q in self.cache:
+                answer = self.cache[record.q]
+                answer.header.id = record.header.id
+                return answer
+    def answer(self, record):
+        if len(record.questions) == 1:
+            self.cache[record.q] = record
+        for r in record.rr:
+            if r.rtype in (1, 5, 39) and r.rclass == 1:
+                self.rdns[str(r.rdata)] = str(r.rname)
+    def ip2domain(self, ip):
+        while ip in self.rdns:
+            ip = self.rdns[ip]
+        return ip.rstrip('.')

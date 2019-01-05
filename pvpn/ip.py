@@ -61,10 +61,11 @@ class Control(enum.IntFlag):
     URG = 0x20
 
 class TCPStack:
-    def __init__(self, src_ip, src_port, dst_ip, dst_port, reply, tcp_conn):
+    def __init__(self, src_ip, src_port, dst_ip, dst_name, dst_port, reply, tcp_conn):
         self.src_ip = src_ip
         self.src_port = src_port
         self.dst_ip = dst_ip
+        self.dst_name = dst_name
         self.dst_port = dst_port
         self.reply = reply
         self.tcp_conn = tcp_conn
@@ -260,7 +261,7 @@ class TCPStack:
         #print(f'connect {self.dst_ip}:{self.dst_port}')
         total = 0
         try:
-            reader, self.writer = await self.tcp_conn.tcp_connect(str(self.dst_ip), self.dst_port)
+            reader, self.writer = await self.tcp_conn.tcp_connect(self.dst_name, self.dst_port)
         except Exception:
             # connect fail
             self.close()

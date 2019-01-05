@@ -100,7 +100,7 @@ class IKEv1Session:
             prf = self.crypto.prf
             hash_i = prf.prf(self.skeyid, self.peer_public_key+self.my_public_key+self.peer_spi+self.my_spi+self.sa_bytes+payload_id.to_bytes())
             assert hash_i == request.get_payload(enums.Payload.HASH_1).data, 'Authentication Failed'
-            response_payload_id = message.PayloadID_1(enums.IDType.ID_FQDN, self.args.userid.encode())
+            response_payload_id = message.PayloadID_1(enums.IDType.ID_FQDN, f'{__title__}-{__version__}'.encode())
             hash_r = prf.prf(self.skeyid, self.my_public_key+self.peer_public_key+self.my_spi+self.peer_spi+self.sa_bytes+response_payload_id.to_bytes())
             response_payloads = [response_payload_id, message.PayloadHASH_1(hash_r)]
             reply(self.response(enums.Exchange.IDENTITY_1, response_payloads, crypto=self.crypto))
@@ -130,7 +130,7 @@ class IKEv1Session:
             assert self.state == State.CHILD_SA_SENT
             self.state = State.ESTABLISHED
         elif request.exchange == enums.Exchange.QUICK_1:
-            assert self.state == State.CONF_SENT
+            assert self.state in (State.CONF_SENT, State.HASH_SENT)
             self.check_hash(request)
             payload_nonce = request.get_payload(enums.Payload.NONCE_1)
             peer_nonce = payload_nonce.nonce
@@ -267,7 +267,6 @@ class IKEv2Session:
             response_payloads = [ message.PayloadSA([chosen_proposal]),
                                   message.PayloadNONCE(self.my_nonce),
                                   message.PayloadKE(payload_ke.dh_group, public_key),
-                                  message.PayloadVENDOR(f'{__title__}-{__version__}'.encode()),
                                   message.PayloadNOTIFY(0, enums.Notify.NAT_DETECTION_DESTINATION_IP, b'', os.urandom(20)),
                                   message.PayloadNOTIFY(0, enums.Notify.NAT_DETECTION_SOURCE_IP, b'', os.urandom(20)) ]
             reply(self.response(enums.Exchange.IKE_SA_INIT, response_payloads))
@@ -287,7 +286,7 @@ class IKEv2Session:
             chosen_child_proposal = request.get_payload(enums.Payload.SA).get_proposal(enums.EncrId.ENCR_AES_CBC)
             child_sa = self.create_child_key(chosen_child_proposal, self.peer_nonce, self.my_nonce)
             chosen_child_proposal.spi = child_sa.spi_in
-            response_payload_idr = message.PayloadIDr(enums.IDType.ID_FQDN, self.args.userid.encode())
+            response_payload_idr = message.PayloadIDr(enums.IDType.ID_FQDN, f'{__title__}-{__version__}'.encode())
             auth_data = self.auth_data(self.response_data, self.peer_nonce, response_payload_idr, self.my_crypto.sk_p)
 
             response_payloads = [ message.PayloadSA([chosen_child_proposal]),
@@ -384,6 +383,9 @@ class IKE_500(asyncio.DatagramProtocol):
         session.process(request, stream, lambda response: self.transport.sendto(response_header+response, addr))
 
 class SPE_4500(IKE_500):
+    def __init__(self, args, sessions):
+        IKE_500.__init__(self, args, sessions)
+        self.dnscache = dns.DNSCache()
     def datagram_received(self, data, addr):
         spi = data[:4]
         if spi == b'\xff':
@@ -417,25 +419,40 @@ class SPE_4500(IKE_500):
                 return True
             if header == enums.IpProto.IPV4:
                 proto, src_ip, dst_ip, ip_body = ip.parse_ipv4(data)
+                dst_name = self.dnscache.ip2domain(str(dst_ip))
                 if proto == enums.IpProto.UDP:
                     src_port, dst_port, udp_body = ip.parse_udp(ip_body)
-                    print(f'IPv4 UDP {src_ip}:{src_port} -> {dst_ip}:{dst_port}', len(udp_body))
                     if dst_port == 53:
-                        record = dns.DNSRecord.unpack(udp_body)
-                        print('IPv4 UDP/DNS Query', record.q.qname)
+                        try:
+                            record = dns.DNSRecord.unpack(udp_body)
+                            answer = self.dnscache.query(record)
+                            print(f'IPv4 DNS {src_ip}:{src_port} -> {dst_name}:{dst_port} Query={record.q.qname}{" Cached" if answer else ""}')
+                            if answer:
+                                ip_body = ip.make_udp(dst_port, src_port, answer.pack())
+                                data = ip.make_ipv4(proto, dst_ip, src_ip, ip_body)
+                                reply(data)
+                                return
+                        except Exception as e:
+                            print(e)
+                    else:
+                        print(f'IPv4 UDP {src_ip}:{src_port} -> {dst_name}:{dst_port} Length={len(udp_body)}')
                     def udp_reply(udp_body):
                         #print(f'IPv4 UDP Reply {dst_ip}:{dst_port} -> {src_ip}:{src_port}', result)
                         if dst_port == 53:
                             record = dns.DNSRecord.unpack(udp_body)
-                            print('IPv4 UDP/DNS Result', ' '.join(f'{r.rname}->{r.rdata}' for r in record.rr))
+                            if not self.args.nocache:
+                                self.dnscache.answer(record)
+                            print(f'IPv4 DNS {dst_name}:{dst_port} -> {src_ip}:{src_port} Answer=['+' '.join(f'{r.rname}->{r.rdata}' for r in record.rr)+']')
+                        else:
+                            print(f'IPv4 DNS {dst_name}:{dst_port} -> {src_ip}:{src_port} Length={len(udp_body)}')
                         ip_body = ip.make_udp(dst_port, src_port, udp_body)
                         data = ip.make_ipv4(proto, dst_ip, src_ip, ip_body)
                         reply(data)
-                    asyncio.ensure_future(self.args.urserver.udp_sendto(str(dst_ip), dst_port, udp_body, udp_reply, (str(src_ip), src_port)))
+                    asyncio.ensure_future(self.args.urserver.udp_sendto(dst_name, dst_port, udp_body, udp_reply, (str(src_ip), src_port)))
                 elif proto == enums.IpProto.TCP:
                     src_port, dst_port, flag, tcp_body = ip.parse_tcp(ip_body)
                     if flag & 2:
-                        print(f'IPv4 TCP {src_ip}:{src_port} -> {dst_ip}:{dst_port} CONNECT')
+                        print(f'IPv4 TCP {src_ip}:{src_port} -> {dst_name}:{dst_port} CONNECT')
                     #else:
                     #    print(f'IPv4 TCP {src_ip}:{src_port} -> {dst_ip}:{dst_port}', ip_body)
                     key = (str(src_ip), src_port)
@@ -443,12 +460,12 @@ class SPE_4500(IKE_500):
                         for spi, tcp in list(sa.tcp_stack.items()):
                             if tcp.obsolete():
                                 sa.tcp_stack.pop(spi)
-                        sa.tcp_stack[key] = tcp = ip.TCPStack(src_ip, src_port, dst_ip, dst_port, reply, self.args.rserver)
+                        sa.tcp_stack[key] = tcp = ip.TCPStack(src_ip, src_port, dst_ip, dst_name, dst_port, reply, self.args.rserver)
                     else:
                         tcp = sa.tcp_stack[key]
                     tcp.parse(ip_body)
                 else:
-                    print('IPv4', enums.IpProto(proto).name, src_ip, '->', dst_ip, data)
+                    print(f'IPv4 {enums.IpProto(proto).name} {src_ip} -> {dst_name} Data={data}')
             else:
                 print(enums.IpProto(header).name, data)
         else:
@@ -460,9 +477,9 @@ def main():
     parser = argparse.ArgumentParser(description=__description__, epilog=f'Online help: <{__url__}>')
     parser.add_argument('-r', dest='rserver', default=DIRECT, type=pproxy.Connection, help='tcp remote server uri (default: direct)')
     parser.add_argument('-ur', dest='urserver', default=DIRECT, type=pproxy.Connection, help='udp remote server uri (default: direct)')
-    parser.add_argument('-i', dest='userid', default='test', help='userid (default: test)')
     parser.add_argument('-p', dest='passwd', default='test', help='password (default: test)')
     parser.add_argument('-dns', dest='dns', default='8.8.8.8', help='dns server (default: 8.8.8.8)')
+    parser.add_argument('-nc', dest='nocache', default=None, action='store_true', help='do not cache dns (default: off)')
     parser.add_argument('-v', dest='v', action='count', help='print verbose output')
     parser.add_argument('--version', action='version', version=f'{__title__} {__version__}')
     args = parser.parse_args()
