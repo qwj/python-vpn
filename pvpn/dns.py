@@ -429,6 +429,9 @@ class DNSCache(object):
             if record.q in self.cache:
                 answer = self.cache[record.q]
                 answer.header.id = record.header.id
+                for r in answer.rr:
+                    if r.rtype in (1, 5, 39) and r.rclass == 1:
+                        self.rdns[str(r.rdata)] = str(r.rname)
                 return answer
     def answer(self, record):
         if len(record.questions) == 1:

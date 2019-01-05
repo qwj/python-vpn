@@ -391,6 +391,7 @@ class IpProto(TypeEnum):
     IPV6 = 41
     ESP = 50
     ICMPV6 = 58
+    ENCAP = 98
     MH = 135
     RAW = 255
 

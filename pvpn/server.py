@@ -426,7 +426,7 @@ class SPE_4500(IKE_500):
                         try:
                             record = dns.DNSRecord.unpack(udp_body)
                             answer = self.dnscache.query(record)
-                            print(f'IPv4 DNS {src_ip}:{src_port} -> {dst_name}:{dst_port} Query={record.q.qname}{" Cached" if answer else ""}')
+                            print(f'IPv4 DNS -> {dst_name}:{dst_port} Query={record.q.qname}{" (Cached)" if answer else ""}')
                             if answer:
                                 ip_body = ip.make_udp(dst_port, src_port, answer.pack())
                                 data = ip.make_ipv4(proto, dst_ip, src_ip, ip_body)
@@ -435,16 +435,16 @@ class SPE_4500(IKE_500):
                         except Exception as e:
                             print(e)
                     else:
-                        print(f'IPv4 UDP {src_ip}:{src_port} -> {dst_name}:{dst_port} Length={len(udp_body)}')
+                        print(f'IPv4 UDP -> {dst_name}:{dst_port} Length={len(udp_body)}')
                     def udp_reply(udp_body):
                         #print(f'IPv4 UDP Reply {dst_ip}:{dst_port} -> {src_ip}:{src_port}', result)
                         if dst_port == 53:
                             record = dns.DNSRecord.unpack(udp_body)
                             if not self.args.nocache:
                                 self.dnscache.answer(record)
-                            print(f'IPv4 DNS {dst_name}:{dst_port} -> {src_ip}:{src_port} Answer=['+' '.join(f'{r.rname}->{r.rdata}' for r in record.rr)+']')
+                            print(f'IPv4 DNS <- {dst_name}:{dst_port} Answer=['+' '.join(f'{r.rname}->{r.rdata}' for r in record.rr)+']')
                         else:
-                            print(f'IPv4 DNS {dst_name}:{dst_port} -> {src_ip}:{src_port} Length={len(udp_body)}')
+                            print(f'IPv4 DNS <- {dst_name}:{dst_port} Length={len(udp_body)}')
                         ip_body = ip.make_udp(dst_port, src_port, udp_body)
                         data = ip.make_ipv4(proto, dst_ip, src_ip, ip_body)
                         reply(data)
@@ -452,7 +452,7 @@ class SPE_4500(IKE_500):
                 elif proto == enums.IpProto.TCP:
                     src_port, dst_port, flag, tcp_body = ip.parse_tcp(ip_body)
                     if flag & 2:
-                        print(f'IPv4 TCP {src_ip}:{src_port} -> {dst_name}:{dst_port} CONNECT')
+                        print(f'IPv4 TCP -> {dst_name}:{dst_port} Connect')
                     #else:
                     #    print(f'IPv4 TCP {src_ip}:{src_port} -> {dst_ip}:{dst_port}', ip_body)
                     key = (str(src_ip), src_port)
@@ -465,9 +465,9 @@ class SPE_4500(IKE_500):
                         tcp = sa.tcp_stack[key]
                     tcp.parse(ip_body)
                 else:
-                    print(f'IPv4 {enums.IpProto(proto).name} {src_ip} -> {dst_name} Data={data}')
+                    print(f'IPv4 {enums.IpProto(proto).name} -> {dst_name} Data={data}')
             else:
-                print(enums.IpProto(header).name, data)
+                print(f'{enums.IpProto(header).name} Unhandled Protocol. Data={data}')
         else:
             print('unknown packet', data, addr)
 
