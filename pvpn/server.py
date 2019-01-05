@@ -104,7 +104,6 @@ class IKEv1Session:
             hash_r = prf.prf(self.skeyid, self.my_public_key+self.peer_public_key+self.my_spi+self.peer_spi+self.sa_bytes+response_payload_id.to_bytes())
             response_payloads = [response_payload_id, message.PayloadHASH_1(hash_r)]
             reply(self.response(enums.Exchange.IDENTITY_1, response_payloads, crypto=self.crypto))
-            self.crypto.last_iv = self.crypto.iv
             self.state = State.HASH_SENT
             reply(self.xauth_init())
         elif request.exchange == enums.Exchange.TRANSACTION_1:
