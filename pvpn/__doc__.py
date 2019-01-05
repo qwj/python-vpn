@@ -1,5 +1,5 @@
 __title__       = "pvpn"
-__version__     = "0.0.6"
+__version__     = "0.0.7"
 __license__     = "MIT"
 __description__ = "VPN server that can tunnel IP network to tcp/udp proxy."
 __keywords__    = "vpn ike spe ip tcp udp"

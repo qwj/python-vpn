@@ -86,7 +86,7 @@ class Crypto:
         self.sk_a = sk_a
         self.prf = prf
         self.sk_p = sk_p
-        self.iv = iv
+        self.iv = {0: iv}
         self.last_iv = None
         self.m_id = set()
     def decrypt_esp(self, encrypted):
@@ -103,20 +103,18 @@ class Crypto:
         encrypted = self.cipher.encrypt(self.sk_e, bytes(iv), bytes(plain))
         return iv + encrypted + bytes(self.integrity.hash_size)
     def encrypt_1(self, plain, m_id):
-        if self.last_iv and m_id not in self.m_id:
-            self.m_id.add(m_id)
-            self.iv = self.prf.hasher(self.last_iv+m_id.to_bytes(4, 'big')).digest()[:self.cipher.block_size]
+        if m_id not in self.iv:
+            self.iv[m_id] = self.prf.hasher(self.iv[0]+m_id.to_bytes(4, 'big')).digest()[:self.cipher.block_size]
         padlen = self.cipher.block_size - ((len(plain)+1) % self.cipher.block_size)
         plain += b'\x00' * padlen + bytes([padlen])
-        encrypted = self.cipher.encrypt(self.sk_e, self.iv, bytes(plain))
-        self.iv = encrypted[-self.cipher.block_size:]
+        encrypted = self.cipher.encrypt(self.sk_e, self.iv[m_id], bytes(plain))
+        self.iv[m_id] = encrypted[-self.cipher.block_size:]
         return encrypted
     def decrypt_1(self, encrypted, m_id):
-        if self.last_iv and m_id not in self.m_id:
-            self.m_id.add(m_id)
-            self.iv = self.prf.hasher(self.last_iv+m_id.to_bytes(4, 'big')).digest()[:self.cipher.block_size]
-        plain = self.cipher.decrypt(self.sk_e, self.iv, encrypted)
-        self.iv = encrypted[-self.cipher.block_size:]
+        if m_id not in self.iv:
+            self.iv[m_id] = self.prf.hasher(self.iv[0]+m_id.to_bytes(4, 'big')).digest()[:self.cipher.block_size]
+        plain = self.cipher.decrypt(self.sk_e, self.iv[m_id], encrypted)
+        self.iv[m_id] = encrypted[-self.cipher.block_size:]
         #print(plain)
         padlen = plain[-1]
         # do not remove padding according to ios bug

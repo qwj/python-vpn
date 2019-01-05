@@ -192,8 +192,8 @@ class IKEv1Session:
             else:
                 raise Exception(f'unhandled informational {request!r}')
             reply(self.response(enums.Exchange.INFORMATIONAL_1, response_payloads, message_id, crypto=self.crypto, hashmsg=True))
-            if notify_payload and notify_payload.notify == enums.Notify.INITIAL_CONTACT_1:
-                reply(self.xauth_init())
+            #if notify_payload and notify_payload.notify == enums.Notify.INITIAL_CONTACT_1:
+            #    reply(self.xauth_init())
         else:
             raise Exception(f'unhandled request {request!r}')
 
