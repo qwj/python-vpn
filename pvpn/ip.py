@@ -137,7 +137,7 @@ class TCPStack:
         tcp_body = ip_body[offset>>2:]
         self.rwnd = window
         self.update = time.perf_counter()
-        #print('RECV', self.dst_ip, self.dst_port, self.state, Control(flag), seq, ack, len(tcp_body))
+        #print('RECV', self.dst_name, self.dst_port, self.state, Control(flag), seq, ack, len(tcp_body))
         if self.state == State.CLOSED:
             if flag & Control.RST:
                 pass
@@ -241,7 +241,7 @@ class TCPStack:
     def send(self, tcp_body=b'', *, flag=Control.ACK, seq=None, ack=None):
         self.update = time.perf_counter()
         window = max(0, (65535-len(self.writer.transport._buffer)) if self.writer else 0)
-        #print('SEND', self.dst_ip, self.dst_port, self.state, Control(flag), (self.dst_seq if seq is None else seq), (self.src_seq if ack is None else ack), len(tcp_body))
+        #print('SEND', self.dst_name, self.dst_port, self.state, Control(flag), (self.dst_seq if seq is None else seq), (self.src_seq if ack is None else ack), len(tcp_body))
         tcp_header = struct.pack('>HHIIBBHHH', self.dst_port, self.src_port, (self.dst_seq if seq is None else seq)&0xffffffff, (self.src_seq if ack is None else ack)&0xffffffff, 5<<4, flag, window, 0, 0)
         ip_body = bytearray(tcp_header + tcp_body)
         tochecksum = bytearray(self.dst_ip.packed+self.src_ip.packed+b'\x00\x06'+len(ip_body).to_bytes(2, 'big') + ip_body)

@@ -23,7 +23,6 @@ class ChildSa:
         self.msgid_in = 1
         self.msgid_out = 1
         self.msgwin_in = set()
-        self.tcp_stack = {}
         self.child = None
     def incr_msgid_in(self):
         self.msgid_in += 1
@@ -32,6 +31,7 @@ class ChildSa:
             self.msgid_in += 1
 
 class IKEv1Session:
+    child_sa = []
     def __init__(self, args, sessions, peer_spi):
         self.args = args
         self.sessions = sessions
@@ -41,7 +41,6 @@ class IKEv1Session:
         self.my_nonce = os.urandom(32)
         self.peer_nonce = None
         self.state = State.INITIAL
-        self.child_sa = []
         self.sessions[self.my_spi] = self
     def response(self, exchange, payloads, message_id=0, *, crypto=None, hashmsg=None):
         if hashmsg:
@@ -130,7 +129,7 @@ class IKEv1Session:
             assert self.state == State.CHILD_SA_SENT
             self.state = State.ESTABLISHED
         elif request.exchange == enums.Exchange.QUICK_1:
-            assert self.state in (State.CONF_SENT, State.HASH_SENT)
+            assert self.state not in (State.INITIAL, State.SA_SENT, State.KE_SENT)
             self.check_hash(request)
             payload_nonce = request.get_payload(enums.Payload.NONCE_1)
             peer_nonce = payload_nonce.nonce
@@ -152,6 +151,8 @@ class IKEv1Session:
             crypto_out = crypto.Crypto(cipher, sk_er, integ, sk_ar)
             child_sa = ChildSa(my_spi, peer_spi, crypto_in, crypto_out)
             self.sessions[my_spi] = child_sa
+            for old_child_sa in self.child_sa:
+                old_child_sa.child = child_sa
             self.child_sa.append(child_sa)
             self.state = State.CHILD_SA_SENT
         elif request.exchange == enums.Exchange.INFORMATIONAL_1:
@@ -164,9 +165,6 @@ class IKEv1Session:
             elif delete_payload and delete_payload.protocol == enums.Protocol.IKE:
                 self.state = State.DELETED
                 self.sessions.pop(self.my_spi)
-                for child_sa in self.child_sa:
-                    self.sessions.pop(child_sa.spi_in)
-                self.child_sa = []
                 response_payloads.append(delete_payload)
                 message_id = request.message_id
             elif delete_payload:
@@ -337,7 +335,6 @@ class IKEv2Session:
                 my_nonce = os.urandom(random.randrange(16, 256))
                 child_sa = self.create_child_key(chosen_proposal, peer_nonce, my_nonce)
                 chosen_proposal.spi = child_sa.spi_in
-                child_sa.tcp_stack = old_child_sa.tcp_stack
                 old_child_sa.child = child_sa
                 response_payloads = [ message.PayloadNOTIFY(chosen_proposal.protocol, enums.Notify.REKEY_SA, old_child_sa.spi_in, b''),
                                       message.PayloadNONCE(my_nonce),
@@ -385,6 +382,7 @@ class IKE_500(asyncio.DatagramProtocol):
 class SPE_4500(IKE_500):
     def __init__(self, args, sessions):
         IKE_500.__init__(self, args, sessions)
+        self.tcp_stack = {}
         self.dnscache = dns.DNSCache()
     def datagram_received(self, data, addr):
         spi = data[:4]
@@ -431,7 +429,6 @@ class SPE_4500(IKE_500):
                                 ip_body = ip.make_udp(dst_port, src_port, answer.pack())
                                 data = ip.make_ipv4(proto, dst_ip, src_ip, ip_body)
                                 reply(data)
-                                return
                         except Exception as e:
                             print(e)
                     else:
@@ -451,18 +448,18 @@ class SPE_4500(IKE_500):
                     asyncio.ensure_future(self.args.urserver.udp_sendto(dst_name, dst_port, udp_body, udp_reply, (str(src_ip), src_port)))
                 elif proto == enums.IpProto.TCP:
                     src_port, dst_port, flag, tcp_body = ip.parse_tcp(ip_body)
-                    if flag & 2:
-                        print(f'IPv4 TCP -> {dst_name}:{dst_port} Connect')
                     #else:
                     #    print(f'IPv4 TCP {src_ip}:{src_port} -> {dst_ip}:{dst_port}', ip_body)
-                    key = (str(src_ip), src_port)
-                    if key not in sa.tcp_stack:
-                        for spi, tcp in list(sa.tcp_stack.items()):
+                    key = (addr[0], src_port)
+                    if key not in self.tcp_stack:
+                        if flag & 2:
+                            print(f'IPv4 TCP -> {dst_name}:{dst_port} Connect')
+                        for spi, tcp in list(self.tcp_stack.items()):
                             if tcp.obsolete():
-                                sa.tcp_stack.pop(spi)
-                        sa.tcp_stack[key] = tcp = ip.TCPStack(src_ip, src_port, dst_ip, dst_name, dst_port, reply, self.args.rserver)
+                                self.tcp_stack.pop(spi)
+                        self.tcp_stack[key] = tcp = ip.TCPStack(src_ip, src_port, dst_ip, dst_name, dst_port, reply, self.args.rserver)
                     else:
-                        tcp = sa.tcp_stack[key]
+                        tcp = self.tcp_stack[key]
                     tcp.parse(ip_body)
                 else:
                     print(f'IPv4 {enums.IpProto(proto).name} -> {dst_name} Data={data}')
