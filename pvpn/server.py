@@ -31,8 +31,8 @@ class ChildSa:
             self.msgid_in += 1
 
 class IKEv1Session:
-    child_sa = []
-    def __init__(self, args, sessions, peer_spi):
+    all_child_sa = {}
+    def __init__(self, args, sessions, peer_spi, remote_id):
         self.args = args
         self.sessions = sessions
         self.my_spi = os.urandom(8)
@@ -40,6 +40,7 @@ class IKEv1Session:
         self.crypto = None
         self.my_nonce = os.urandom(32)
         self.peer_nonce = None
+        self.child_sa = self.all_child_sa.setdefault(remote_id, [])
         self.state = State.INITIAL
         self.sessions[self.my_spi] = self
     def response(self, exchange, payloads, message_id=0, *, crypto=None, hashmsg=None):
@@ -129,7 +130,7 @@ class IKEv1Session:
             assert self.state == State.CHILD_SA_SENT
             self.state = State.ESTABLISHED
         elif request.exchange == enums.Exchange.QUICK_1:
-            assert self.state not in (State.INITIAL, State.SA_SENT, State.KE_SENT)
+            assert self.state == State.CONF_SENT or self.child_sa
             self.check_hash(request)
             payload_nonce = request.get_payload(enums.Payload.NONCE_1)
             peer_nonce = payload_nonce.nonce
@@ -372,7 +373,7 @@ class IKE_500(asyncio.DatagramProtocol):
         if request.exchange == enums.Exchange.IKE_SA_INIT:
             session = IKEv2Session(self.args, self.sessions, request.spi_i)
         elif request.exchange == enums.Exchange.IDENTITY_1 and request.spi_r == bytes(8):
-            session = IKEv1Session(self.args, self.sessions, request.spi_i)
+            session = IKEv1Session(self.args, self.sessions, request.spi_i, addr[0])
         else:
             session = self.sessions.get(request.spi_r)
             if session is None:
@@ -429,6 +430,7 @@ class SPE_4500(IKE_500):
                                 ip_body = ip.make_udp(dst_port, src_port, answer.pack())
                                 data = ip.make_ipv4(proto, dst_ip, src_ip, ip_body)
                                 reply(data)
+                                return
                         except Exception as e:
                             print(e)
                     else:
@@ -441,7 +443,7 @@ class SPE_4500(IKE_500):
                                 self.dnscache.answer(record)
                             print(f'IPv4 DNS <- {dst_name}:{dst_port} Answer=['+' '.join(f'{r.rname}->{r.rdata}' for r in record.rr)+']')
                         else:
-                            print(f'IPv4 DNS <- {dst_name}:{dst_port} Length={len(udp_body)}')
+                            print(f'IPv4 UDP <- {dst_name}:{dst_port} Length={len(udp_body)}')
                         ip_body = ip.make_udp(dst_port, src_port, udp_body)
                         data = ip.make_ipv4(proto, dst_ip, src_ip, ip_body)
                         reply(data)
@@ -461,6 +463,24 @@ class SPE_4500(IKE_500):
                     else:
                         tcp = self.tcp_stack[key]
                     tcp.parse(ip_body)
+                elif proto == enums.IpProto.ICMP:
+                    icmptp, code, icmp_body = ip.parse_icmp(ip_body)
+                    if icmptp == 0:
+                        tid, seq = struct.unpack('>HH', ip_body[4:8])
+                        print(f'IPv4 PING -> {dst_name} Id={tid} Seq={seq} Data={icmp_body}')
+                    elif icmptp == 8:
+                        tid, seq = struct.unpack('>HH', ip_body[4:8])
+                        print(f'IPv4 ECHO -> {dst_name} Id={tid} Seq={seq} Data={icmp_body}')
+                        # NEED ROOT PRIVILEGE TO SEND ICMP PACKET
+                        # a = socket.socket(socket.AF_INET, socket.SOCK_RAW, proto)
+                        # a.sendto(icmp_body, (dst_name, 1))
+                        # a.close()
+                    elif icmptp == 3 and code == 3:
+                        eproto, esrc_ip, edst_ip, eip_body = ip.parse_ipv4(icmp_body)
+                        eport = int.from_bytes(eip_body[2:4], 'big')
+                        print(f'IPv4 ICMP -> {dst_name} {eproto.name} :{eport} Denied')
+                    else:
+                        print(f'IPv4 ICMP -> {dst_name} Data={ip_body}')
                 else:
                     print(f'IPv4 {enums.IpProto(proto).name} -> {dst_name} Data={data}')
             else:

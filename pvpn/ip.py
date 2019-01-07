@@ -31,6 +31,10 @@ def parse_udp(data):
 def make_udp(src_port, dst_port, body):
     return struct.pack('>HHHH', src_port, dst_port, len(body)+8, 0)+body
 
+def parse_icmp(data):
+    icmptp, code = struct.unpack('>BB', data[:2])
+    return icmptp, code, data[8:]
+
 def parse_tcp(data):
     src_port, dst_port = struct.unpack('>HH', data[:4])
     offset = data[12]
