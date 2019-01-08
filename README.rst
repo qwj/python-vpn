@@ -17,10 +17,11 @@ Introduction
 
 All VPN softwares are stupid, clumsy and hard to configure. So comes **python-vpn**. 
 
-- NO app needed. 
-- NO server configuration.
-- NO network interface added.
-- NO iptables changed.
+- NO app install needed
+- NO server configuration file
+- NO network interface added
+- NO iptables changed
+- NO /etc contents changed
 
 Press "RETURN" to start, "CTRL+C" to stop.
 
@@ -35,7 +36,7 @@ QuickStart
   Serving on UDP :500 :4500...
   ^C
 
-Open server's UDP port :500 :4500 to your device. In system setting, add an "IPSec" (iOS) or "IPSec IKE PSK" (Android) VPN, write down the server address and password "yourpassword". Connect.
+Open server's UDP port :500 :4500 to your device. In device's system setting, add an "IPSec" (iOS) or "IPSec IKE PSK" (Android) VPN, write down the server address and password "yourpassword". Connect.
 
 You should change the default password "test" to keep higher security. See "pvpn -h" for more options.
 
@@ -51,12 +52,15 @@ Protocols
 ---------
 
 +-------------------+----------------+-------------------+
-| Name              | iOS            | Android           |
+| Name              | Name in iOS    | Name in Android   |
 +===================+================+===================+
-| IKEv1 PSK ✔       | IPsec          | "IPSec Xauth PSK" |
+| IKEv1 PSK ✔       | IPsec [2]      | "IPSec Xauth PSK" |
 +-------------------+----------------+-------------------+
-| IKEv2 PSK ✔       | IKEv2          | "IPSec IKEv2 PSK" |
+| IKEv2 PSK ✔       | IKEv2 [1]      | "IPSec IKEv2 PSK" |
 +-------------------+----------------+-------------------+
+
+[1] Turn off "user authentication"
+[2] Do not use certificates
 
 Examples
 --------
