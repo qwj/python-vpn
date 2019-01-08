@@ -42,10 +42,11 @@ You should change the default password "test" to keep higher security. See "pvpn
 Features
 --------
 
-- Clean, lightweight and easy to use
+- Clean, lightweight
 - IKEv1, IKEv2 auto-detection
 - TCP stack implementation
 - TCP/UDP tunnel support
+- DNS cache
 
 Protocols
 ---------
@@ -53,7 +54,7 @@ Protocols
 +-------------------+----------------+-------------------+----------------+------------------+
 | Protocol Name     | Name in iOS    | Name in Android   | Name in MacOS  | Name in Windows  |
 +===================+================+===================+================+==================+
-| IKEv1 PSK ✔       | IPsec **[1]**  | "IPSec Xauth PSK" | Cicso IPSec    | IPSec            |
+| IKEv1 PSK ✔       | IPsec **[1]**  | "IPSec Xauth PSK" | Cisco IPSec    | IPSec            |
 +-------------------+----------------+-------------------+----------------+------------------+
 | IKEv2 PSK ✔       | IKEv2 **[2]**  | "IPSec IKEv2 PSK" | IKEv2          | IKEv2            |
 +-------------------+----------------+-------------------+----------------+------------------+
