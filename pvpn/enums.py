@@ -421,8 +421,8 @@ class TransformAttr(TypeEnum):
     DH_ORDER = 16
 
 class ESPAttr(TypeEnum):
-    LD_TYPE = 1
-    LD = 2
+    LIFE_TYPE = 1
+    DURATION = 2
     GRP_DESC = 3
     ENC_MODE = 4
     AUTH = 5
@@ -431,6 +431,11 @@ class ESPAttr(TypeEnum):
     COMP_DICT_SIZE = 8
     COMP_PRIVALG = 9
     SECCTX = 10
+    ESN = 11
+    AUTH_KEY_LENGTH = 12
+    SIG_ALGORITHM = 13
+    ADDR_PRESERVE = 14
+    SA_DIRECTION = 15
 
 class EncModeId_1(TypeEnum):
     ANY = 0
@@ -450,6 +455,12 @@ class IntegId_1(TypeEnum):
     AUTH_HMAC_SHA2_256 = 5
     AUTH_HMAC_SHA2_384 = 6
     AUTH_HMAC_SHA2_512 = 7
+    AUTH_HMAC_RIPEMD = 8
+    AUTH_AES_XCBC_MAC = 9
+    AUTH_SIG_RSA = 10
+    AUTH_AES_128_GMAC = 11
+    AUTH_AES_192_GMAC = 12
+    AUTH_AES_256_GMAC = 13
 
 ESPTable_1 = {
     ESPAttr.ENC_MODE: EncModeId_1,

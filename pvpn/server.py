@@ -53,7 +53,7 @@ class IKEv1Session:
                 enums.MsgFlag.NONE, message_id, payloads)
         print(repr(response))
         return response.to_bytes(crypto=crypto)
-    def check_hash(self, request):
+    def verify_hash(self, request):
         payload_hash = request.payloads.pop(0)
         assert payload_hash.type == enums.Payload.HASH_1
         hash_i = self.crypto.prf.prf(self.skeyid_a, request.message_id.to_bytes(4, 'big') + message.Message.encode_payloads(request.payloads))
@@ -107,7 +107,7 @@ class IKEv1Session:
             self.state = State.HASH_SENT
             reply(self.xauth_init())
         elif request.exchange == enums.Exchange.TRANSACTION_1:
-            self.check_hash(request)
+            self.verify_hash(request)
             payload_cp = request.get_payload(enums.Payload.CP_1)
             if enums.CPAttrType.XAUTH_USER_NAME in payload_cp.attrs:
                 assert self.state == State.HASH_SENT
@@ -131,7 +131,7 @@ class IKEv1Session:
             self.state = State.ESTABLISHED
         elif request.exchange == enums.Exchange.QUICK_1:
             assert self.state == State.CONF_SENT or self.child_sa
-            self.check_hash(request)
+            self.verify_hash(request)
             payload_nonce = request.get_payload(enums.Payload.NONCE_1)
             peer_nonce = payload_nonce.nonce
             payload_nonce.nonce = my_nonce = os.urandom(len(peer_nonce))
@@ -157,7 +157,7 @@ class IKEv1Session:
             self.child_sa.append(child_sa)
             self.state = State.CHILD_SA_SENT
         elif request.exchange == enums.Exchange.INFORMATIONAL_1:
-            self.check_hash(request)
+            self.verify_hash(request)
             response_payloads = []
             delete_payload = request.get_payload(enums.Payload.DELETE_1)
             notify_payload = request.get_payload(enums.Payload.NOTIFY_1)
@@ -396,6 +396,10 @@ class SPE_4500(IKE_500):
             sa = self.sessions[spi]
             if seqnum < sa.msgid_in or seqnum in sa.msgwin_in:
                 return
+            if sa.msgid_in == 1 and sa.crypto_in.integrity.hasher is hashlib.sha256 and (len(data)-8)%16 == 12:
+                # HMAC-SHA2-256-96 fix
+                sa.crypto_in.integrity.hash_size = 12
+                sa.crypto_out.integrity.hash_size = 12
             sa.crypto_in.verify_checksum(data)
             if seqnum > sa.msgid_in + 65536:
                 sa.incr_msgid_in()
