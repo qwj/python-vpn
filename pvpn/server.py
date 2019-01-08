@@ -115,7 +115,7 @@ class IKEv1Session:
                 self.state = State.AUTH_SET
             elif enums.CPAttrType.INTERNAL_IP4_ADDRESS in payload_cp.attrs:
                 assert self.state == State.AUTH_SET
-                attrs = { enums.CPAttrType.INTERNAL_IP4_ADDRESS: ipaddress.ip_address('1.0.0.1').packed,
+                attrs = { enums.CPAttrType.INTERNAL_IP4_ADDRESS: ipaddress.ip_address('10.0.0.1').packed,
                           enums.CPAttrType.INTERNAL_IP4_DNS: ipaddress.ip_address(self.args.dns).packed,
                         }
                 response_payloads = [ message.PayloadCP_1(enums.CFGType.CFG_REPLY, attrs, identifier=payload_cp.identifier) ]
@@ -499,7 +499,7 @@ def main():
     parser.add_argument('-r', dest='rserver', default=DIRECT, type=pproxy.Connection, help='tcp remote server uri (default: direct)')
     parser.add_argument('-ur', dest='urserver', default=DIRECT, type=pproxy.Connection, help='udp remote server uri (default: direct)')
     parser.add_argument('-p', dest='passwd', default='test', help='password (default: test)')
-    parser.add_argument('-dns', dest='dns', default='8.8.8.8', help='dns server (default: 8.8.8.8)')
+    parser.add_argument('-dns', dest='dns', default='1.1.1.1', help='dns server (default: 1.1.1.1)')
     parser.add_argument('-nc', dest='nocache', default=None, action='store_true', help='do not cache dns (default: off)')
     parser.add_argument('-v', dest='v', action='count', help='print verbose output')
     parser.add_argument('--version', action='version', version=f'{__title__} {__version__}')
