@@ -51,7 +51,7 @@ class IKEv1Session:
             payloads.insert(0, message.PayloadHASH_1(hash_r))
         response = message.Message(self.peer_spi, self.my_spi, 0x10, exchange,
                 enums.MsgFlag.NONE, message_id, payloads)
-        print(repr(response))
+        #print(repr(response))
         return response.to_bytes(crypto=crypto)
     def verify_hash(self, request):
         payload_hash = request.payloads.pop(0)
@@ -328,7 +328,7 @@ class IKEv2Session:
             assert self.state == State.ESTABLISHED
             chosen_proposal = request.get_payload(enums.Payload.SA).get_proposal(enums.EncrId.ENCR_AES_CBC)
             if chosen_proposal.protocol != enums.Protocol.IKE:
-                payload_notify = next((i for i in request.get_payloads(enums.Payload.NOTIFY) if i.notify==enums.Notify.REKEY_SA), None)
+                payload_notify = request.get_payload_notify(enums.Notify.REKEY_SA)
                 if not payload_notify:
                     raise Exception(f'unhandled protocol {chosen_proposal.protocol} {request!r}')
                 old_child_sa = next(i for i in self.child_sa if i.spi_out == payload_notify.spi)

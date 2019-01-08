@@ -150,8 +150,8 @@ class PayloadHASH_1(Payload):
         return f'{self.data.hex()}'
 
 class PayloadNONCE_1(Payload):
-    def __init__(self, nonce=None):
-        Payload.__init__(self, enums.Payload.NONCE_1)
+    def __init__(self, nonce=None, critical=False):
+        Payload.__init__(self, enums.Payload.NONCE_1, critical)
         self.nonce = os.urandom(random.randrange(16, 256)) if nonce is None else nonce
     def parse_data(self, stream, length):
         self.nonce = stream.read(length)
@@ -282,8 +282,6 @@ class Proposal:
         return Proposal(self.num, self.protocol, self.spi, transforms)
     def get_transform(self, type):
         return next((x for x in self.transforms if x.type == type), None)
-    def get_transforms(self, type):
-        return [x for x in self.transforms if x.type == type]
 
 class PayloadSA(Payload):
     def __init__(self, proposals, critical=False):
@@ -345,16 +343,10 @@ class PayloadAUTH(Payload):
     def to_repr(self):
         return f'{self.method.name}({self.auth_data.hex()})'
 
-class PayloadNONCE(Payload):
+class PayloadNONCE(PayloadNONCE_1):
     def __init__(self, nonce=None, critical=False):
-        Payload.__init__(self, enums.Payload.NONCE, critical)
-        self.nonce = os.urandom(random.randrange(16, 256)) if nonce is None else nonce
-    def parse_data(self, stream, length):
-        self.nonce = stream.read(length)
-    def to_bytes(self):
-        return self.nonce
-    def to_repr(self):
-        return f'{self.nonce.hex()}'
+        PayloadNONCE_1.__init__(self, nonce, critical)
+        self.type = enums.Payload.NONCE
 
 class PayloadNOTIFY(Payload):
     def __init__(self, protocol, notify, spi, data, critical=False):
@@ -532,7 +524,6 @@ class Message:
         return Message(header[0], header[1], header[3], header[4], header[5], header[6], first_payload=header[2])
     def parse_payloads(self, stream, *, crypto=None):
         if self.flag & enums.MsgFlag.Encryption:
-            #print(repr(self))
             stream = io.BytesIO(crypto.decrypt_1(stream.read(), self.message_id))
         next_payload = self.first_payload
         while next_payload:
@@ -558,7 +549,7 @@ class Message:
                 next_payload = payloads[idx+1].type
             else:
                 next_payload = enums.Payload.NONE
-            data.extend(struct.pack('>BxH', next_payload, len(payload_data) + 4))
+            data.extend(struct.pack('>BBH', next_payload, 0x80 if payload.critical else 0x00, len(payload_data) + 4))
             data.extend(payload_data)
         return data
     def to_bytes(self, *, crypto=None):
@@ -582,7 +573,7 @@ class Message:
     def __repr__(self):
         return f'{self.exchange.name}(spi_i={self.spi_i.hex()}, spi_r={self.spi_r.hex()}, version={self.version>>4}.{self.version&0xF}, flag={self.flag!s}, message_id={self.message_id}, ' + \
                 (', '.join(repr(i) for i in self.payloads) or 'NONE') + ')'
-    def get_payloads(self, payload_type):
-        return [x for x in self.payloads if x.type == payload_type]
-    def get_payload(self, payload_type, encrypted=False):
+    def get_payload(self, payload_type):
         return next((x for x in self.payloads if x.type == payload_type), None)
+    def get_payload_notify(self, notify_id):
+        return next((x for x in self.payloads if x.type == enums.Payload.NOTIFY and x.notify == notify_id), None)

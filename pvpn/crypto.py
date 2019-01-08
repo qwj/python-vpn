@@ -115,9 +115,8 @@ class Crypto:
             self.iv[m_id] = self.prf.hasher(self.iv[0]+m_id.to_bytes(4, 'big')).digest()[:self.cipher.block_size]
         plain = self.cipher.decrypt(self.sk_e, self.iv[m_id], encrypted)
         self.iv[m_id] = encrypted[-self.cipher.block_size:]
-        #print(plain)
         padlen = plain[-1]
-        # do not remove padding according to ios bug
+        # do not remove padding according to ios cisco ipsec bug
         return plain
     def decrypt(self, encrypted):
         iv = encrypted[:self.cipher.block_size]
