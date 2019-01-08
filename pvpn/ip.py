@@ -1,5 +1,5 @@
 import struct, ipaddress, os, asyncio, random, heapq, collections, time, enum
-from . import enums
+from . import enums, dns
 
 SMSS = 1350
 
@@ -310,3 +310,77 @@ class TCPStack:
             self.state = State.FIN_WAIT_1
             self.dst_win_buf.extend(bytes([Control.ACK|Control.FIN]))
             self.dst_seq += 1
+
+class IPPacket:
+    def __init__(self, args):
+        self.tcp_stack = {}
+        self.dns_cache = None if args.nocache else dns.DNSCache()
+        self.rserver = args.rserver
+        self.urserver = args.urserver
+    def handle(self, remote_id, header, data, reply):
+        if header == enums.IpProto.IPV4:
+            proto, src_ip, dst_ip, ip_body = parse_ipv4(data)
+            dst_name = self.dns_cache.ip2domain(str(dst_ip)) if self.dns_cache else str(dst_ip)
+            if proto == enums.IpProto.UDP:
+                src_port, dst_port, udp_body = parse_udp(ip_body)
+                key = (remote_id, src_port)
+                if dst_port == 53:
+                    try:
+                        record = dns.DNSRecord.unpack(udp_body)
+                        answer = self.dns_cache.query(record) if self.dns_cache else None
+                        print(f'IPv4 DNS -> {dst_name}:{dst_port} Query={record.q.qname}{" (Cached)" if answer else ""}')
+                        if answer:
+                            ip_body = make_udp(dst_port, src_port, answer.pack())
+                            data = make_ipv4(proto, dst_ip, src_ip, ip_body)
+                            reply(data)
+                            return
+                    except Exception as e:
+                        print(e)
+                else:
+                    print(f'IPv4 UDP -> {dst_name}:{dst_port} Length={len(udp_body)}')
+                def udp_reply(udp_body):
+                    #print(f'IPv4 UDP Reply {dst_ip}:{dst_port} -> {src_ip}:{src_port}', result)
+                    if dst_port == 53:
+                        record = dns.DNSRecord.unpack(udp_body)
+                        self.dns_cache.answer(record) if self.dns_cache else None
+                        print(f'IPv4 DNS <- {dst_name}:{dst_port} Answer=['+' '.join(f'{r.rname}->{r.rdata}' for r in record.rr)+']')
+                    else:
+                        print(f'IPv4 UDP <- {dst_name}:{dst_port} Length={len(udp_body)}')
+                    ip_body = make_udp(dst_port, src_port, udp_body)
+                    data = make_ipv4(proto, dst_ip, src_ip, ip_body)
+                    reply(data)
+                asyncio.ensure_future(self.urserver.udp_sendto(dst_name, dst_port, udp_body, udp_reply, key))
+            elif proto == enums.IpProto.TCP:
+                src_port, dst_port, flag, tcp_body = parse_tcp(ip_body)
+                key = (remote_id, src_port)
+                tcp = self.tcp_stack.get(key)
+                if tcp is None:
+                    if flag & 2:
+                        print(f'IPv4 TCP -> {dst_name}:{dst_port} Connect')
+                    for spi, tcp in list(self.tcp_stack.items()):
+                        if tcp.obsolete():
+                            self.tcp_stack.pop(spi)
+                    self.tcp_stack[key] = tcp = TCPStack(src_ip, src_port, dst_ip, dst_name, dst_port, reply, self.rserver)
+                tcp.parse(ip_body)
+            elif proto == enums.IpProto.ICMP:
+                icmptp, code, icmp_body = parse_icmp(ip_body)
+                if icmptp == 0:
+                    tid, seq = struct.unpack('>HH', ip_body[4:8])
+                    print(f'IPv4 PING -> {dst_name} Id={tid} Seq={seq} Data={icmp_body}')
+                elif icmptp == 8:
+                    tid, seq = struct.unpack('>HH', ip_body[4:8])
+                    print(f'IPv4 ECHO -> {dst_name} Id={tid} Seq={seq} Data={icmp_body}')
+                    # NEED ROOT PRIVILEGE TO SEND ICMP PACKET
+                    # a = socket.socket(socket.AF_INET, socket.SOCK_RAW, proto)
+                    # a.sendto(icmp_body, (dst_name, 1))
+                    # a.close()
+                elif icmptp == 3 and code == 3:
+                    eproto, esrc_ip, edst_ip, eip_body = parse_ipv4(icmp_body)
+                    eport = int.from_bytes(eip_body[2:4], 'big')
+                    print(f'IPv4 ICMP -> {dst_name} {eproto.name} :{eport} Denied')
+                else:
+                    print(f'IPv4 ICMP -> {dst_name} Data={ip_body}')
+            else:
+                print(f'IPv4 {enums.IpProto(proto).name} -> {dst_name} Data={data}')
+        else:
+            print(f'{enums.IpProto(header).name} Unhandled Protocol. Data={data}')
