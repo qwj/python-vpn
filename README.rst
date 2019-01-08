@@ -10,7 +10,7 @@ python-vpn
 .. |Hit-Count| image:: http://hits.dwyl.io/qwj/python-vpn.svg
    :target: https://pypi.python.org/pypi/pvpn/
 
-IPSec IKE(v1,v2) PSK VPN implemented in pure Python.
+IPSec IKE(v1,v2) PSK VPN implemented in pure Python. *For Research Purposes Only*
 
 Introduction
 ------------
