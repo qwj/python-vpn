@@ -20,8 +20,7 @@ All VPN softwares are stupid, clumsy and hard to configure. So comes **python-vp
 - NO app install needed
 - NO server configuration file
 - NO network interface added
-- NO iptables changed
-- NO /etc contents changed
+- NO iptables or "/etc" modified
 
 Press "RETURN" to start, "CTRL+C" to stop.
 
@@ -54,13 +53,13 @@ Protocols
 +-------------------+----------------+-------------------+
 | Name              | Name in iOS    | Name in Android   |
 +===================+================+===================+
-| IKEv1 PSK ✔       | IPsec [2]      | "IPSec Xauth PSK" |
+| IKEv1 PSK ✔       | IPsec **[1]**  | "IPSec Xauth PSK" |
 +-------------------+----------------+-------------------+
-| IKEv2 PSK ✔       | IKEv2 [1]      | "IPSec IKEv2 PSK" |
+| IKEv2 PSK ✔       | IKEv2 **[2]**  | "IPSec IKEv2 PSK" |
 +-------------------+----------------+-------------------+
 
-[1] Turn off "user authentication"
-[2] Do not use certificates
+| **[1]** Do not use certificates
+| **[2]** Turn off "user authentication"
 
 Examples
 --------
