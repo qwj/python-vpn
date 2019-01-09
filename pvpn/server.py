@@ -423,18 +423,18 @@ class SPE_4500(IKE_500):
         else:
             print('unknown packet', data, addr)
 
-DIRECT = pproxy.Connection('direct://')
-
 def main():
     parser = argparse.ArgumentParser(description=__description__, epilog=f'Online help: <{__url__}>')
-    parser.add_argument('-r', dest='rserver', default=DIRECT, type=pproxy.Connection, help='tcp remote server uri (default: direct)')
-    parser.add_argument('-ur', dest='urserver', default=DIRECT, type=pproxy.Connection, help='udp remote server uri (default: direct)')
+    parser.add_argument('-r', dest='rserver', default=[], action='append', type=pproxy.Connection, help='tcp remote server uri (default: direct)')
+    parser.add_argument('-ur', dest='urserver', default=[], action='append', type=pproxy.Connection, help='udp remote server uri (default: direct)')
+    parser.add_argument('-s', dest='salgorithm', default='fa', choices=('fa', 'rr', 'rc', 'lc'), help='scheduling algorithm (default: first_available)')
     parser.add_argument('-p', dest='passwd', default='test', help='password (default: test)')
     parser.add_argument('-dns', dest='dns', default='1.1.1.1', help='dns server (default: 1.1.1.1)')
     parser.add_argument('-nc', dest='nocache', default=None, action='store_true', help='do not cache dns (default: off)')
     parser.add_argument('-v', dest='v', action='count', help='print verbose output')
     parser.add_argument('--version', action='version', version=f'{__title__} {__version__}')
     args = parser.parse_args()
+    args.DIRECT = pproxy.Connection('direct://')
     loop = asyncio.get_event_loop()
     sessions = {}
     transport1, _ = loop.run_until_complete(loop.create_datagram_endpoint(lambda: IKE_500(args, sessions), ('0.0.0.0', 500)))
