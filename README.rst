@@ -67,15 +67,15 @@ IKE/ISAKMP
 + `RFC2407 <https://tools.ietf.org/html/rfc2407>`_ The Internet IP Security Domain of Interpretation for ISAKMP
 + `RFC2408 <https://tools.ietf.org/html/rfc2408>`_ Internet Security Association and Key Management Protocol (ISAKMP)
 + `RFC2409 <https://tools.ietf.org/html/rfc2409>`_ The Internet Key Exchange (IKE)
-+ `IANA <https://www.iana.org/assignments/ipsec-registry/ipsec-registry.xhtml>`_ Internet Key Exchange (IKE) Attributes
-+ `IANA <https://www.iana.org/assignments/isakmp-registry/isakmp-registry.xhtml>`_ "Magic Numbers" for ISAKMP Protocol
-+ `DRAFT <https://tools.ietf.org/html/draft-dukes-ike-mode-cfg-01>`_ The ISAKMP Configuration Method
-+ `DRAFT <https://tools.ietf.org/html/draft-beaulieu-ike-xauth-02>`_ Extended Authentication within IKE (XAUTH)
++ `IANA_01 <https://www.iana.org/assignments/ipsec-registry/ipsec-registry.xhtml>`_ Internet Key Exchange (IKE) Attributes
++ `IANA_02 <https://www.iana.org/assignments/isakmp-registry/isakmp-registry.xhtml>`_ "Magic Numbers" for ISAKMP Protocol
++ `DRAFT_1 <https://tools.ietf.org/html/draft-dukes-ike-mode-cfg-01>`_ The ISAKMP Configuration Method
++ `DRAFT_2 <https://tools.ietf.org/html/draft-beaulieu-ike-xauth-02>`_ Extended Authentication within IKE (XAUTH)
 
 IKEv2
 
 + `RFC7296 <https://tools.ietf.org/html/rfc7296>`_ Internet Key Exchange Protocol Version 2 (IKEv2)
-+ `IANA <https://www.iana.org/assignments/ikev2-parameters/ikev2-parameters.xhtml>`_ Internet Key Exchange Version 2 (IKEv2) Parameters
++ `IANA_03 <https://www.iana.org/assignments/ikev2-parameters/ikev2-parameters.xhtml>`_ Internet Key Exchange Version 2 (IKEv2) Parameters
 + `RFC3748 <https://tools.ietf.org/html/rfc3748>`_ Extensible Authentication Protocol (EAP)
 + `RFC5106 <https://tools.ietf.org/html/rfc5106>`_ The Extensible Authentication Protocol-Internet Key Exchange Protocol version 2 (EAP-IKEv2) Method
 
