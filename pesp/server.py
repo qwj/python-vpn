@@ -32,7 +32,7 @@ class ChildSa:
 
 class IKEv1Session:
     all_child_sa = {}
-    def __init__(self, args, sessions, peer_spi, remote_id):
+    def __init__(self, args, sessions, peer_spi):
         self.args = args
         self.sessions = sessions
         self.my_spi = os.urandom(8)
@@ -40,7 +40,7 @@ class IKEv1Session:
         self.crypto = None
         self.my_nonce = os.urandom(32)
         self.peer_nonce = None
-        self.child_sa = self.all_child_sa.setdefault(remote_id, [])
+        self.child_sa = []
         self.state = State.INITIAL
         self.sessions[self.my_spi] = self
     def response(self, exchange, payloads, message_id=0, *, crypto=None, hashmsg=None):
@@ -65,9 +65,13 @@ class IKEv1Session:
                 }
         response_payloads = [message.PayloadCP_1(enums.CFGType.CFG_REQUEST, attrs)]
         return self.response(enums.Exchange.TRANSACTION_1, response_payloads, crypto=self.crypto, hashmsg=True)
-    def process(self, request, stream, reply):
+    def process(self, request, stream, remote_id, reply):
         request.parse_payloads(stream, crypto=self.crypto)
         print(repr(request))
+        if remote_id not in self.all_child_sa:
+            self.all_child_sa[remote_id] = self.child_sa
+        elif self.all_child_sa[remote_id] != self.child_sa:
+            self.child_sa = self.all_child_sa[remote_id]
         if request.exchange == enums.Exchange.IDENTITY_1 and request.get_payload(enums.Payload.SA_1):
             assert self.state == State.INITIAL
             request_payload_sa = request.get_payload(enums.Payload.SA_1)
@@ -204,7 +208,7 @@ class IKEv2Session:
         self.peer_msgid = 0
         self.my_crypto = None
         self.peer_crypto = None
-        self.my_nonce = os.urandom(random.randrange(16, 256))
+        self.my_nonce = os.urandom(32)
         self.peer_nonce = None
         self.state = State.INITIAL
         self.request_data = None
@@ -248,7 +252,7 @@ class IKEv2Session:
         self.peer_msgid += 1
         self.response_data = response.to_bytes(crypto=crypto)
         return self.response_data
-    def process(self, request, stream, reply):
+    def process(self, request, stream, remote_id, reply):
         if request.message_id == self.peer_msgid - 1:
             reply(self.response_data)
             return
@@ -261,6 +265,10 @@ class IKEv2Session:
             self.peer_nonce = request.get_payload(enums.Payload.NONCE).nonce
             chosen_proposal = request.get_payload(enums.Payload.SA).get_proposal(enums.EncrId.ENCR_AES_CBC)
             payload_ke = request.get_payload(enums.Payload.KE)
+            prefered_dh = chosen_proposal.get_transform(enums.Transform.DH).id
+            if payload_ke.dh_group != prefered_dh or payload_ke.ke_data[0] == 0:
+                reply(self.response(enums.Exchange.IKE_SA_INIT, [ message.PayloadNOTIFY(0, enums.Notify.INVALID_KE_PAYLOAD, b'', prefered_dh.to_bytes(2, 'big'))]))
+                return
             public_key, shared_secret = crypto.DiffieHellman(payload_ke.dh_group, payload_ke.ke_data)
             self.create_key(chosen_proposal, shared_secret)
             response_payloads = [ message.PayloadSA([chosen_proposal]),
@@ -373,12 +381,12 @@ class IKE_500(asyncio.DatagramProtocol):
         if request.exchange == enums.Exchange.IKE_SA_INIT:
             session = IKEv2Session(self.args, self.sessions, request.spi_i)
         elif request.exchange == enums.Exchange.IDENTITY_1 and request.spi_r == bytes(8):
-            session = IKEv1Session(self.args, self.sessions, request.spi_i, addr[0])
+            session = IKEv1Session(self.args, self.sessions, request.spi_i)
+        elif request.spi_r in self.sessions:
+            session = self.sessions[request.spi_r]
         else:
-            session = self.sessions.get(request.spi_r)
-            if session is None:
-                return
-        session.process(request, stream, lambda response: self.transport.sendto(response_header+response, addr))
+            return
+        session.process(request, stream, addr[:2], lambda response: self.transport.sendto(response_header+response, addr))
 
 class SPE_4500(IKE_500):
     def __init__(self, args, sessions):
@@ -391,8 +399,8 @@ class SPE_4500(IKE_500):
         elif spi == IKE_HEADER:
             IKE_500.datagram_received(self, data[4:], addr, response_header=IKE_HEADER)
         elif spi in self.sessions:
-            seqnum = int.from_bytes(data[4:8], 'big')
             sa = self.sessions[spi]
+            seqnum = int.from_bytes(data[4:8], 'big')
             if seqnum < sa.msgid_in or seqnum in sa.msgwin_in:
                 return
             if sa.msgid_in == 1 and sa.crypto_in.integrity.hasher is hashlib.sha256 and (len(data)-8)%16 == 12:
@@ -419,7 +427,7 @@ class SPE_4500(IKE_500):
                 sa.msgid_out += 1
                 self.transport.sendto(encrypted, addr)
                 return True
-            self.ippacket.handle(addr[0], header, data, reply)
+            self.ippacket.handle(addr[:2], header, data, reply)
         else:
             print('unknown packet', data, addr)
 

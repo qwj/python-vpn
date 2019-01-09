@@ -183,7 +183,7 @@ def DiffieHellman(group, peer):
     if group not in PRIMES:
         raise Exception(f'Unsupported DH Group DH_{group}')
     p, g, l = PRIMES[group]
-    a = random.randrange(1, p)
+    a = random.randrange(p>>8, p)
     if type(g) is tuple:
         return ec_mul(g[0], l, a, p, g[1]).to_bytes(l*2, 'big'), ec_mul(int.from_bytes(peer, 'big'), l, a, p, g[1]).to_bytes(l*2, 'big')[:l]
     else:

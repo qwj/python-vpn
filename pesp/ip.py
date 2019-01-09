@@ -343,12 +343,12 @@ class IPPacket:
             if proto == enums.IpProto.UDP:
                 option = self.schedule(dst_name, udp=True) or self.DIRECT
                 src_port, dst_port, udp_body = parse_udp(ip_body)
-                key = (remote_id, src_port)
+                key = (remote_id[0], remote_id[1], src_port)
                 if dst_port == 53:
                     try:
                         record = dns.DNSRecord.unpack(udp_body)
                         answer = self.dns_cache.query(record) if self.dns_cache else None
-                        print(f'DNS {remote_id}:{src_port}{option.logtext(dst_name, dst_port)} Query={record.q.qname}{" (Cached)" if answer else ""}')
+                        print(f'DNS {remote_id[0]}:{src_port}{option.logtext(dst_name, dst_port)} Query={record.q.qname}{" (Cached)" if answer else ""}')
                         if answer:
                             ip_body = make_udp(dst_port, src_port, answer.pack())
                             data = make_ipv4(proto, dst_ip, src_ip, ip_body)
@@ -357,27 +357,27 @@ class IPPacket:
                     except Exception as e:
                         print(e)
                 else:
-                    print(f'UDP {remote_id}:{src_port}{option.logtext(dst_name, dst_port)} Length={len(udp_body)}')
+                    print(f'UDP {remote_id[0]}:{src_port}{option.logtext(dst_name, dst_port)} Length={len(udp_body)}')
                 def udp_reply(udp_body):
                     if dst_port == 53:
                         record = dns.DNSRecord.unpack(udp_body)
                         self.dns_cache.answer(record) if self.dns_cache else None
-                        print(f'DNS {remote_id}:{src_port}{option.logtext(dst_name, dst_port).replace("->","<-")} Answer=['+' '.join(f'{r.rname}->{r.rdata}' for r in record.rr)+']')
+                        print(f'DNS {remote_id[0]}:{src_port}{option.logtext(dst_name, dst_port).replace("->","<-")} Answer=['+' '.join(f'{r.rname}->{r.rdata}' for r in record.rr)+']')
                     else:
-                        print(f'UDP {remote_id}:{src_port}{option.logtext(dst_name, dst_port).replace("->","<-")} Length={len(udp_body)}')
+                        print(f'UDP {remote_id[0]}:{src_port}{option.logtext(dst_name, dst_port).replace("->","<-")} Length={len(udp_body)}')
                     ip_body = make_udp(dst_port, src_port, udp_body)
                     data = make_ipv4(proto, dst_ip, src_ip, ip_body)
                     reply(data)
                 asyncio.ensure_future(option.udp_sendto(dst_name, dst_port, udp_body, udp_reply, key))
             elif proto == enums.IpProto.TCP:
                 src_port, dst_port, flag, tcp_body = parse_tcp(ip_body)
-                key = (remote_id, src_port)
+                key = (remote_id[0], remote_id[1], src_port)
                 tcp = self.tcp_stack.get(key)
                 if tcp is None:
                     if flag & Control.SYN == 0:
                         return
                     option = self.schedule(dst_name) or self.DIRECT
-                    print(f'TCP {remote_id}:{src_port}{option.logtext(dst_name, dst_port)}')
+                    print(f'TCP {remote_id[0]}:{src_port}{option.logtext(dst_name, dst_port)}')
                     for spi, tcp in list(self.tcp_stack.items()):
                         if tcp.obsolete():
                             self.tcp_stack.pop(spi)
@@ -388,10 +388,10 @@ class IPPacket:
                 icmptp, code, icmp_body = parse_icmp(ip_body)
                 if icmptp == 0:
                     tid, seq = struct.unpack('>HH', ip_body[4:8])
-                    print(f'PING -> {dst_name} Id={tid} Seq={seq} Data={icmp_body}')
+                    print(f'PING {remote_id[0]} -> {dst_name} Id={tid} Seq={seq} Data={icmp_body}')
                 elif icmptp == 8:
                     tid, seq = struct.unpack('>HH', ip_body[4:8])
-                    print(f'ECHO -> {dst_name} Id={tid} Seq={seq} Data={icmp_body}')
+                    print(f'ECHO {remote_id[0]} -> {dst_name} Id={tid} Seq={seq} Data={icmp_body}')
                     # NEED ROOT PRIVILEGE TO SEND ICMP PACKET
                     # a = socket.socket(socket.AF_INET, socket.SOCK_RAW, proto)
                     # a.sendto(icmp_body, (dst_name, 1))
@@ -399,9 +399,9 @@ class IPPacket:
                 elif icmptp == 3 and code == 3:
                     eproto, esrc_ip, edst_ip, eip_body = parse_ipv4(icmp_body)
                     eport = int.from_bytes(eip_body[2:4], 'big')
-                    print(f'ICMP -> {dst_name} {eproto.name} :{eport} Denied')
+                    print(f'ICMP {remote_id[0]} -> {dst_name} {eproto.name} :{eport} Denied')
                 else:
-                    print(f'ICMP -> {dst_name} Data={ip_body}')
+                    print(f'ICMP {remote_id[0]} -> {dst_name} Data={ip_body}')
             else:
                 print(f'{enums.IpProto(proto).name} -> {dst_name} Data={data}')
         else:
