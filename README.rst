@@ -84,14 +84,14 @@ You can tunnel traffic to remote http/socks/ss proxy as follows:
   $ pvpn -r ss:///tmp/local
   # Tunnel TCP traffic to unix domain path /tmp/local
 
-Specification
--------------
+Specifications
+--------------
 
 IPSec/ESP
 
-- `RFC2406 <https://tools.ietf.org/html/rfc2406>`_ IP Encapsulating Security Payload (ESP)
-- `RFC3947 <https://tools.ietf.org/html/rfc3947>`_  Negotiation of NAT-Traversal in the IKE
-- `RFC3948 <https://tools.ietf.org/html/rfc3948>`_ UDP Encapsulation of IPsec ESP Packets
+| `RFC2406 <https://tools.ietf.org/html/rfc2406>`_ IP Encapsulating Security Payload (ESP)
+| `RFC3947 <https://tools.ietf.org/html/rfc3947>`_  Negotiation of NAT-Traversal in the IKE
+| `RFC3948 <https://tools.ietf.org/html/rfc3948>`_ UDP Encapsulation of IPsec ESP Packets
 
 IKE/ISAKMP
 
