@@ -84,4 +84,18 @@ You can tunnel traffic to remote http/socks/ss proxy as follows:
   $ pvpn -r ss:///tmp/local
   # Tunnel TCP traffic to unix domain path /tmp/local
 
+Specification
+-------------
 
+IKE/ISAKMP
+
+- `RFC2407 <https://tools.ietf.org/html/rfc2407>`_ The Internet IP Security Domain of Interpretation for ISAKMP
+- `RFC2408 <https://tools.ietf.org/html/rfc2408>`_ Internet Security Association and Key Management Protocol (ISAKMP)
+- `RFC2409 <https://tools.ietf.org/html/rfc2409>`_ The Internet Key Exchange (IKE)
+
+IKEv2
+
+- `RFC5996 <https://tools.ietf.org/html/rfc5996>`_ Internet Key Exchange Protocol Version 2 (IKEv2)
+- `IANA <https://www.iana.org/assignments/ikev2-parameters/ikev2-parameters.xhtml>`_ Internet Key Exchange Version 2 (IKEv2) Parameters
+- `RFC3748 <https://tools.ietf.org/html/rfc3748>`_ Extensible Authentication Protocol (EAP)
+- `RFC4307 <https://tools.ietf.org/html/rfc4307>`_ Cryptographic Algorithms for Use in the Internet Key Exchange Version 2 (IKEv2)
