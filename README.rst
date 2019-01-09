@@ -1,4 +1,4 @@
-python-ike
+python-esp
 ============
 
 IPSec IKE(v1,v2) PSK implemented in pure Python. **(For Research Purposes Only)**
@@ -6,7 +6,7 @@ IPSec IKE(v1,v2) PSK implemented in pure Python. **(For Research Purposes Only)*
 Introduction
 ------------
 
-All IPSec softwares are stupid, clumsy and hard to configure. So comes **python-ike**. 
+All IPSec softwares are stupid, clumsy and hard to configure. So comes **python-esp**. 
 
 - NO app install needed
 - NO server configuration file
@@ -20,15 +20,15 @@ QuickStart
 
 .. code:: rst
 
-  $ pip3 install pike
-  Successfully installed pike-0.1.3
-  $ pike -p yourpassword
+  $ pip3 install pesp
+  Successfully installed pesp-0.1.3
+  $ pesp -p yourpassword
   Serving on UDP :500 :4500...
   ^C
 
 Open server's UDP port :500 :4500 to your device. In device's system setting, add an "IPSec" (iOS) or "IPSec IKE PSK" (Android) node, write down the server address and password "yourpassword". Connect.
 
-You should change the default password "test" to keep higher security. See "pike -h" for more options.
+You should change the default password "test" to keep higher security. See "pesp -h" for more options.
 
 Features
 --------
