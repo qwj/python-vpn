@@ -6,7 +6,7 @@ def read(*names, **kwargs):
         return fp.read()
 
 def find_value(name):
-    data_file = read('pvpn', '__doc__.py')
+    data_file = read('pike', '__doc__.py')
     data_match = re.search(r"^__%s__ += ['\"]([^'\"]*)['\"]" % name, data_file, re.M)
     if data_match:
         return data_match.group(1)
@@ -23,7 +23,7 @@ setup(
     license             = find_value('license'),
     python_requires     = '>=3.6',
     keywords            = find_value('keywords'),
-    packages            = ['pvpn'],
+    packages            = ['pike'],
     classifiers         = [
         'Development Status :: 5 - Production/Stable',
         'Environment :: Console',
@@ -41,7 +41,7 @@ setup(
     ],
     entry_points        = {
         'console_scripts': [
-            'pvpn = pvpn.server:main',
+            'pike = pike.server:main',
         ],
     },
 )
