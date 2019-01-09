@@ -50,7 +50,7 @@ class IKEv1Session:
             hash_r = self.crypto.prf.prf(self.skeyid_a, message_id.to_bytes(4, 'big') + buf)
             payloads.insert(0, message.PayloadHASH_1(hash_r))
         response = message.Message(self.peer_spi, self.my_spi, 0x10, exchange,
-                enums.MsgFlag.NONE, message_id, payloads)
+                                   enums.MsgFlag.NONE, message_id, payloads)
         #print(repr(response))
         return response.to_bytes(crypto=crypto)
     def verify_hash(self, request):
@@ -148,10 +148,11 @@ class IKEv1Session:
             transform = chosen_proposal.transforms[0].values
             cipher = crypto.Cipher(chosen_proposal.transforms[0].id, transform[enums.ESPAttr.KEY_LENGTH])
             integ = crypto.Integrity(transform[enums.ESPAttr.AUTH])
-            keymat = self.crypto.prf.prfplus_1(self.skeyid_d, bytes([chosen_proposal.protocol])+my_spi+peer_nonce+my_nonce, integ.key_size+cipher.key_size)
-            sk_ei, sk_ai = struct.unpack('>{0}s{1}s'.format(cipher.key_size, integ.key_size), keymat)
-            keymat = self.crypto.prf.prfplus_1(self.skeyid_d, bytes([chosen_proposal.protocol])+peer_spi+peer_nonce+my_nonce, integ.key_size+cipher.key_size)
-            sk_er, sk_ar = struct.unpack('>{0}s{1}s'.format(cipher.key_size, integ.key_size), keymat)
+            keymat_fmt = struct.Struct('>{0}s{1}s'.format(cipher.key_size, integ.key_size))
+            keymat = self.crypto.prf.prfplus(self.skeyid_d, bytes([chosen_proposal.protocol])+my_spi+peer_nonce+my_nonce, False)
+            sk_ei, sk_ai = keymat_fmt.unpack(bytes(next(keymat) for _ in range(keymat_fmt.size)))
+            keymat = self.crypto.prf.prfplus(self.skeyid_d, bytes([chosen_proposal.protocol])+peer_spi+peer_nonce+my_nonce, False)
+            sk_er, sk_ar = keymat_fmt.unpack(bytes(next(keymat) for _ in range(keymat_fmt.size)))
             crypto_in = crypto.Crypto(cipher, sk_ei, integ, sk_ai)
             crypto_out = crypto.Crypto(cipher, sk_er, integ, sk_ar)
             child_sa = ChildSa(my_spi, peer_spi, crypto_in, crypto_out)
@@ -224,18 +225,18 @@ class IKEv2Session:
             skeyseed = prf.prf(self.peer_nonce+self.my_nonce, shared_secret)
         else:
             skeyseed = prf.prf(old_sk_d, shared_secret+self.peer_nonce+self.my_nonce)
-        keymat = prf.prfplus(skeyseed, self.peer_nonce+self.my_nonce+self.peer_spi+self.my_spi,
-                             prf.key_size*3+integ.key_size*2+cipher.key_size*2)
-        self.sk_d, sk_ai, sk_ar, sk_ei, sk_er, sk_pi, sk_pr = struct.unpack(
-            '>{0}s{1}s{1}s{2}s{2}s{0}s{0}s'.format(prf.key_size, integ.key_size, cipher.key_size), keymat)
+        keymat_fmt = struct.Struct('>{0}s{1}s{1}s{2}s{2}s{0}s{0}s'.format(prf.key_size, integ.key_size, cipher.key_size))
+        keymat = prf.prfplus(skeyseed, self.peer_nonce+self.my_nonce+self.peer_spi+self.my_spi)
+        self.sk_d, sk_ai, sk_ar, sk_ei, sk_er, sk_pi, sk_pr = keymat_fmt.unpack(bytes(next(keymat) for _ in range(keymat_fmt.size)))
         self.my_crypto = crypto.Crypto(cipher, sk_er, integ, sk_ar, prf, sk_pr)
         self.peer_crypto = crypto.Crypto(cipher, sk_ei, integ, sk_ai, prf, sk_pi)
     def create_child_key(self, child_proposal, nonce_i, nonce_r):
         integ = crypto.Integrity(child_proposal.get_transform(enums.Transform.INTEG).id)
         cipher = crypto.Cipher(child_proposal.get_transform(enums.Transform.ENCR).id,
                                child_proposal.get_transform(enums.Transform.ENCR).keylen)
-        keymat = self.my_crypto.prf.prfplus(self.sk_d, nonce_i+nonce_r, 2*integ.key_size+2*cipher.key_size)
-        sk_ei, sk_ai, sk_er, sk_ar = struct.unpack('>{0}s{1}s{0}s{1}s'.format(cipher.key_size, integ.key_size), keymat)
+        keymat_fmt = struct.Struct('>{0}s{1}s{0}s{1}s'.format(cipher.key_size, integ.key_size))
+        keymat = self.my_crypto.prf.prfplus(self.sk_d, nonce_i+nonce_r)
+        sk_ei, sk_ai, sk_er, sk_ar = keymat_fmt.unpack(bytes(next(keymat) for _ in range(keymat_fmt.size)))
         crypto_in = crypto.Crypto(cipher, sk_ei, integ, sk_ai)
         crypto_out = crypto.Crypto(cipher, sk_er, integ, sk_ar)
         child_sa = ChildSa(os.urandom(4), child_proposal.spi, crypto_in, crypto_out)
@@ -247,7 +248,7 @@ class IKEv2Session:
         return prf(prf(self.args.passwd.encode(), b'Key Pad for IKEv2'), message_data+nonce+prf(sk_p, payload.to_bytes()))
     def response(self, exchange, payloads, *, crypto=None):
         response = message.Message(self.peer_spi, self.my_spi, 0x20, exchange,
-                enums.MsgFlag.Response, self.peer_msgid, payloads)
+                                   enums.MsgFlag.Response, self.peer_msgid, payloads)
         #print(repr(response))
         self.peer_msgid += 1
         self.response_data = response.to_bytes(crypto=crypto)

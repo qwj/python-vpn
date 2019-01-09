@@ -21,22 +21,11 @@ class Prf:
         self.hasher, self.key_size = self.DIGESTS[transform] if type(transform) is enums.PrfId else self.DIGESTS_1[transform]
     def prf(self, key, data):
         return hmac.HMAC(key, data, digestmod=self.hasher).digest()
-    def prfplus(self, key, seed, size):
-        result = bytearray()
+    def prfplus(self, key, seed, count=True):
         temp = bytes()
-        i = 1
-        while len(result) < size:
-            temp = self.prf(key, temp + seed + bytes([i]))
-            result.extend(temp)
-            i += 1
-        return result[:size]
-    def prfplus_1(self, key, seed, size):
-        result = bytearray()
-        temp = bytes()
-        while len(result) < size:
-            temp = self.prf(key, temp + seed)
-            result.extend(temp)
-        return result[:size]
+        for i in range(1, 1024):
+            temp = self.prf(key, temp + seed + (bytes([i]) if count else b''))
+            yield from temp
 
 class Integrity:
     DIGESTS_1 = {
