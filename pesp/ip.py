@@ -42,6 +42,55 @@ def parse_tcp(data):
     body = data[offset>>2:]
     return src_port, dst_port, flag, body
 
+def parse_l2tp(data):
+    if data[0] & 0x80:
+        length, tunnel_id, session_id, ns, nr = struct.unpack('>HHHHH', data[2:12])
+        body = {}
+        pos = 12
+        while pos < len(data):
+            avplen, vendor_id, attrtp = struct.unpack('>HHH', data[pos:pos+6])
+            avplen &= 0x3ff
+            value = data[pos+6:pos+avplen]
+            if attrtp == 0:
+                value = enums.L2TPType(struct.unpack('>H', value)[0])
+            elif attrtp in (2, 9, 10, 14):
+                value, = struct.unpack('>H', value)
+            elif attrtp in (3, 15, 19, 24):
+                value, = struct.unpack('>I', value)
+            body[enums.L2TPAttr(attrtp)] = value
+            pos += avplen
+        return tunnel_id, session_id, ns, nr, body
+    else:
+        pos = 2
+        if data[0] & 0x40:
+            pos += 2
+        tunnel_id, session_id = struct.unpack('>HH', data[pos:pos+4])
+        pos += 4
+        if data[0] & 0x08:
+            ns, nr = struct.unpack('>HH', data[pos:pos+4])
+            pos += 4
+        else:
+            ns = nr = 0
+        if data[0] & 0x04:
+            off, = struct.unpack('>H', data[pos:pos+2])
+            pos += 2+off
+        return tunnel_id, session_id, ns, nr, data[pos:]
+
+def make_l2tp(tunnel_id, session_id, ns, nr, body):
+    if type(body) is dict:
+        data = bytearray()
+        for k, v in sorted(body.items()):
+            if k in (0, 2, 9, 10, 14):
+                v = struct.pack('>H', v)
+            elif k in (3, 15, 19, 24):
+                v = struct.pack('>I', v)
+            data.extend(struct.pack('>HHH', (len(v)+6)|0x8000, 0, k) + v)
+        header = struct.pack('>HHHHHH', 0xc802, len(data)+12, tunnel_id, session_id, ns, nr)
+    else:
+        data = body
+        header = struct.pack('>HHHH', 0x4002, len(data)+8, tunnel_id, session_id)
+    return header + data
+
 class State(enum.Enum):
     LISTEN = 0
     SYN_SENT = 1
@@ -404,5 +453,42 @@ class IPPacket:
                     print(f'ICMP {remote_id[0]} -> {dst_name} Data={ip_body}')
             else:
                 print(f'{enums.IpProto(proto).name} -> {dst_name} Data={data}')
+        elif header == enums.IpProto.UDP:
+            src_port, dst_port, udp_body = parse_udp(data)
+            if dst_port == 1701:
+                # L2TP
+                tunnel_id, session_id, ns, nr, l2tp_body = parse_l2tp(udp_body)
+                print(tunnel_id, session_id, ns, nr, l2tp_body)
+                if type(l2tp_body) is dict:
+                    msgtp = l2tp_body[enums.L2TPAttr.MsgType]
+                    if msgtp == enums.L2TPType.SCCRQ:
+                        tunnel_id = l2tp_body[enums.L2TPAttr.TunnelID]
+                        l2tp_body[enums.L2TPAttr.MsgType] = enums.L2TPType.SCCRP
+                        l2tp_body[enums.L2TPAttr.HostName] = b'hello\x00'
+                        udp_body = make_l2tp(tunnel_id, session_id, nr, ns+1, l2tp_body)
+                        ip_body = make_udp(dst_port, src_port, udp_body)
+                        print('reply', l2tp_body)
+                        reply(ip_body)
+                    elif msgtp in (enums.L2TPType.SCCCN, enums.L2TPType.ICCN):
+                        l2tp_body = {}
+                        udp_body = make_l2tp(tunnel_id, session_id, nr, ns+1, l2tp_body)
+                        ip_body = make_udp(dst_port, src_port, udp_body)
+                        print('reply', l2tp_body)
+                        reply(ip_body)
+                    elif msgtp == enums.L2TPType.ICRQ:
+                        session_id = l2tp_body[enums.L2TPAttr.SessionID]
+                        l2tp_body[enums.L2TPAttr.MsgType] = enums.L2TPType.ICRP
+                        l2tp_body.pop(enums.L2TPAttr.CallSerial)
+                        udp_body = make_l2tp(tunnel_id, session_id, nr, ns+1, l2tp_body)
+                        ip_body = make_udp(dst_port, src_port, udp_body)
+                        print('reply', l2tp_body)
+                        reply(ip_body)
+                else:
+                    udp_body = make_l2tp(tunnel_id, session_id, None, None, l2tp_body)
+                    ip_body = make_udp(dst_port, src_port, udp_body)
+                    reply(ip_body)
+
+            else:
+                print(f'UDP Unhandled Port={dst_port}. Data={udp_body}')
         else:
             print(f'{enums.IpProto(header).name} Unhandled Protocol. Data={data}')

@@ -77,6 +77,7 @@ class IKEv1Session:
             request_payload_sa = request.get_payload(enums.Payload.SA_1)
             self.sa_bytes = request_payload_sa.to_bytes()
             self.transform = request_payload_sa.proposals[0].transforms[0].values
+            self.auth_mode = self.transform[enums.TransformAttr.AUTH]
             del request_payload_sa.proposals[0].transforms[1:]
             response_payloads = request.payloads
             reply(self.response(enums.Exchange.IDENTITY_1, response_payloads))
@@ -109,7 +110,8 @@ class IKEv1Session:
             response_payloads = [response_payload_id, message.PayloadHASH_1(hash_r)]
             reply(self.response(enums.Exchange.IDENTITY_1, response_payloads, crypto=self.crypto))
             self.state = State.HASH_SENT
-            reply(self.xauth_init())
+            if self.auth_mode == enums.AuthId_1.XAUTHInitPreShared:
+                reply(self.xauth_init())
         elif request.exchange == enums.Exchange.TRANSACTION_1:
             self.verify_hash(request)
             payload_cp = request.get_payload(enums.Payload.CP_1)
@@ -134,7 +136,9 @@ class IKEv1Session:
             assert self.state == State.CHILD_SA_SENT
             self.state = State.ESTABLISHED
         elif request.exchange == enums.Exchange.QUICK_1:
-            assert self.state == State.CONF_SENT or self.child_sa
+            assert self.state == State.CONF_SENT and self.auth_mode == enums.AuthId_1.XAUTHInitPreShared or \
+                   self.state == State.HASH_SENT and self.auth_mode == enums.AuthId_1.PSK or \
+                   self.child_sa
             self.verify_hash(request)
             payload_nonce = request.get_payload(enums.Payload.NONCE_1)
             peer_nonce = payload_nonce.nonce

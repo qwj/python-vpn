@@ -512,3 +512,61 @@ TransformTable_1 = {
     TransformAttr.DH: DhId,
 }
 
+class L2TPType(TypeEnum):
+    SCCRQ = 1
+    SCCRP = 2
+    SCCCN = 3
+    StopCCN = 4
+    HELLO = 6
+    OCRQ = 7
+    OCRP = 8
+    OCCN = 9
+    ICRQ = 10
+    ICRP = 11
+    ICCN = 12
+    CDN = 14
+    WEN = 15
+    SLI = 16
+
+class L2TPAttr(TypeEnum):
+    MsgType = 0
+    RandomVector = 36
+    Result = 1
+    Version = 2
+    FramingCap = 3
+    BearerCap = 4
+    TieBreaker = 5
+    Firmware = 6
+    HostName = 7
+    VendorName = 8
+    TunnelID = 9
+    WindowSize = 10
+    Challenge = 11
+    Response = 13
+    CauseCode = 12
+    SessionID = 14
+    CallSerial = 15
+    MinimumBPS = 16
+    MaximumBPS = 17
+    BearerType = 18
+    FramingType = 19
+    CalledNumber = 21
+    CallingNumber = 22
+    SubAddress = 23
+    ConnectSpeed = 24
+    RxConnectSpeed = 38
+    PhysicalChannel = 25
+    PrivateGroupID = 37
+    SequencingRequired = 39
+    InitialLCP = 26
+    LastSentLCP = 27
+    LastReceivedLCP = 28
+    ProxyAuthenType = 29
+    ProxyAuthenName = 30
+    ProxyAuthenChallenge = 31
+    ProxyAuthenID = 32
+    ProxyAuthenResponse = 33
+    CallErrors = 34
+    ACCM = 35
+
+
