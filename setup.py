@@ -36,7 +36,7 @@ setup(
         'Programming Language :: Python :: 3.7',
     ],
     install_requires    = [
-        'pycryptodome >= 3.4.3',
+        'pycryptodome >= 3.7.2',
         'pproxy >= 2.0.0',
     ],
     entry_points        = {
