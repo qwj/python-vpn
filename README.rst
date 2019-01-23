@@ -6,7 +6,7 @@ IPSec IKE(v1,v2) PSK implemented in pure Python. **(For Research Purposes Only)*
 Introduction
 ------------
 
-All IPSec softwares are stupid, clumsy and hard to configure. So comes **python-esp**. 
+All IPSec softwares are stupid, clumsy and hard to configure. So comes **python-esp**.
 
 - NO app install needed
 - NO server configuration file
@@ -34,7 +34,7 @@ Features
 --------
 
 - Clean, lightweight
-- IKEv1, IKEv2 auto-detection
+- IKEv1, IKEv2, L2TP auto-detection
 - TCP stack implementation
 - TCP/UDP tunnel support
 - DNS cache
@@ -45,6 +45,8 @@ Protocols
 +-------------------+----------------+-------------------+----------------+------------------+
 | Protocol Name     | Name in iOS    | Name in Android   | Name in MacOS  | Name in Windows  |
 +===================+================+===================+================+==================+
+| L2TP PSK ✔        | L2TP           | "L2TP/IPSec PSK"  | L2TP/IPSec     | L2TP             |
++-------------------+----------------+-------------------+----------------+------------------+
 | IKEv1 PSK ✔       | IPsec **[1]**  | "IPSec Xauth PSK" | Cisco IPSec    | IPSec            |
 +-------------------+----------------+-------------------+----------------+------------------+
 | IKEv2 PSK ✔       | IKEv2 **[2]**  | "IPSec IKEv2 PSK" | IKEv2          | IKEv2            |
@@ -84,5 +86,13 @@ Diffie Hellman
 + `RFC3526 <https://tools.ietf.org/html/rfc3526>`_ More Modular Exponential (MODP) Diffie-Hellman groups for Internet Key Exchange (IKE)
 + `RFC5903 <https://tools.ietf.org/html/rfc5903>`_ Elliptic Curve Groups modulo a Prime (ECP Groups) for IKE and IKEv2
 + `RFC5114 <https://tools.ietf.org/html/rfc5114>`_ Additional Diffie-Hellman Groups for Use with IETF Standards
+
+L2TP
+
++ `RFC2661 <https://tools.ietf.org/html/rfc2661>`_ Layer Two Tunneling Protocol "L2TP"
++ `RFC3193 <https://tools.ietf.org/html/rfc3193>`_ Securing L2TP using IPsec
++ `RFC1549 <https://tools.ietf.org/html/rfc1549>`_ PPP in HDLC Framing
++ `RFC1661 <https://tools.ietf.org/html/rfc1661>`_ The Point-to-Point Protocol (PPP)
++ `RFC1332 <https://tools.ietf.org/html/rfc1332>`_ The PPP Internet Protocol Control Protocol (IPCP)
 
 
