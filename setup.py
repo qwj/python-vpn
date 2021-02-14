@@ -6,7 +6,7 @@ def read(*names, **kwargs):
         return fp.read()
 
 def find_value(name):
-    data_file = read('pesp', '__doc__.py')
+    data_file = read('pvpn', '__doc__.py')
     data_match = re.search(r"^__%s__ += ['\"]([^'\"]*)['\"]" % name, data_file, re.M)
     if data_match:
         return data_match.group(1)
@@ -23,7 +23,7 @@ setup(
     license             = find_value('license'),
     python_requires     = '>=3.6',
     keywords            = find_value('keywords'),
-    packages            = ['pesp'],
+    packages            = ['pvpn'],
     classifiers         = [
         'Development Status :: 5 - Production/Stable',
         'Environment :: Console',
@@ -34,6 +34,9 @@ setup(
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
     ],
     install_requires    = [
         'pycryptodome >= 3.7.2',
@@ -42,7 +45,7 @@ setup(
     ],
     entry_points        = {
         'console_scripts': [
-            'pesp = pesp.server:main',
+            'pvpn = pvpn.server:main',
         ],
     },
 )

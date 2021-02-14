@@ -1,12 +1,12 @@
-python-esp
+python-vpn
 ============
 
-IPSec IKE(v1,v2) WireGuard PSK implemented in pure Python. **(For Research Purposes Only)**
+VPN Server implemented in pure Python. **(For Research Purposes Only)**
 
 Introduction
 ------------
 
-All IPSec softwares are stupid, clumsy and hard to configure. So comes **python-esp**.
+All VPN softwares are stupid, clumsy and hard to configure. So comes **python-vpn**.
 
 - NO app install needed
 - NO server configuration file
@@ -20,21 +20,26 @@ QuickStart
 
 .. code:: rst
 
-  $ pip3 install pesp
-  Successfully installed pesp-0.1.3
-  $ pesp -p yourpassword
+  $ pip3 install pvpn
+  Successfully installed pvpn-0.2.0
+  $ pvpn -p yourpassword
   Serving on UDP :500 :4500...
+  ^C
+  $ pvpn -wg 9000
+  Serving on UDP :500 :4500...
+  Serving on UDP :9000 WIREGUARD...
   ^C
 
 Open server's UDP port :500 :4500 to your device. In device's system setting, add an "IPSec" (iOS) or "IPSec IKE PSK" (Android) node, write down the server address and password "yourpassword". Connect.
 
-You should change the default password "test" to keep higher security. See "pesp -h" for more options.
+You should change the default password "test" to keep higher security. See "pvpn -h" for more options.
 
 Features
 --------
 
 - Clean, lightweight
 - IKEv1, IKEv2, L2TP auto-detection
+- WireGuard support
 - TCP stack implementation
 - TCP/UDP tunnel support
 - DNS cache
