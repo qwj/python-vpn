@@ -1,5 +1,5 @@
 import hashlib, os, random, hmac
-from Crypto.Cipher import AES
+from Crypto.Cipher import AES, ChaCha20_Poly1305
 from . import enums
 
 class Prf:
@@ -177,4 +177,37 @@ def DiffieHellman(group, peer):
         return ec_mul(g[0], l, a, p, g[1]).to_bytes(l*2, 'big'), ec_mul(int.from_bytes(peer, 'big'), l, a, p, g[1]).to_bytes(l*2, 'big')[:l]
     else:
         return pow(g, a, p).to_bytes(l, 'big'), pow(int.from_bytes(peer, 'big'), a, p).to_bytes(l, 'big')
+
+def X25519(k, u):
+    p, a24 = 2**255-19, 121665
+    u, k = int.from_bytes(u, 'little') if isinstance(u, bytes) else u, int.from_bytes(k, 'little')
+    x_2, z_2, x_3, z_3, swap = 1, 0, u, 1, 0
+    k &= (1 << 256) - (1 << 255) - 8
+    k |= 1 << 254
+    for t in range(254, -1, -1):
+        k_t = (k >> t) & 1
+        if swap^k_t:
+            x_2, x_3, z_2, z_3 = x_3, x_2, z_3, z_2
+        swap = k_t
+        A, B, C, D = x_2+z_2, x_2-z_2, x_3+z_3, x_3-z_3
+        AA, BB, DA, CB = A*A, B*B, D*A, C*B
+        E   = AA - BB
+        x_3 = pow(DA + CB, 2, p)
+        z_3 = u * pow(DA - CB, 2, p) % p
+        x_2 = AA * BB % p
+        z_2 = E * (AA + a24*E) % p
+    if swap:
+        x_2, x_3, z_2, z_3 = x_3, x_2, z_3, z_2
+    return (x_2 * pow(z_2, p-2, p) % p).to_bytes(32, 'little')
+
+def aead_chacha20poly1305_encrypt(key, counter, plain_text, auth_text):
+    cipher = ChaCha20_Poly1305.new(key=key, nonce=b'\x00\x00\x00\x00'+counter.to_bytes(8, 'little'))
+    cipher.update(auth_text)
+    cipher_text, digest = cipher.encrypt_and_digest(plain_text)
+    return cipher_text+digest
+
+def aead_chacha20poly1305_decrypt(key, counter, cipher_text, auth_text):
+    cipher = ChaCha20_Poly1305.new(key=key, nonce=b'\x00\x00\x00\x00'+counter.to_bytes(8, 'little'))
+    cipher.update(auth_text)
+    return cipher.decrypt_and_verify(cipher_text[:-16], cipher_text[-16:])
 

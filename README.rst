@@ -21,18 +21,18 @@ QuickStart
 .. code:: rst
 
   $ pip3 install pvpn
-  Successfully installed pvpn-0.2.0
+  Successfully installed pvpn-0.2.1
   $ pvpn -p yourpassword
   Serving on UDP :500 :4500...
   ^C
   $ pvpn -wg 9000
   Serving on UDP :500 :4500...
-  Serving on UDP :9000 WIREGUARD...
+  Serving on UDP :9000 (WIREGUARD)...
   ^C
 
 Open server's UDP port :500 :4500 to your device. In device's system setting, add an "IPSec" (iOS) or "IPSec IKE PSK" (Android) node, write down the server address and password "yourpassword". Connect.
 
-You should change the default password "test" to keep higher security. See "pvpn -h" for more options.
+You should modify the default password "test" with a good one. See "pvpn -h" for more options.
 
 Features
 --------
@@ -56,11 +56,12 @@ Protocols
 +-------------------+----------------+-------------------+----------------+------------------+
 | IKEv2 PSK ✔       | IKEv2 **[2]**  | "IPSec IKEv2 PSK" | IKEv2          | IKEv2            |
 +-------------------+----------------+-------------------+----------------+------------------+
-| WireGuard ✔       | WireGuard App                                                          |
+| WireGuard ✔       | WireGuard App **[3]**                                                  |
 +-------------------+----------------+-------------------+----------------+------------------+
 
 | **[1]** Do not use certificates
 | **[2]** Turn off "user authentication"
+| **[3]** Turn off "preshared key"
 
 Specifications
 --------------
