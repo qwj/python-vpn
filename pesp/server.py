@@ -1,4 +1,4 @@
-import argparse, asyncio, io, os, enum, struct, collections, hashlib, ipaddress, socket, random
+import argparse, asyncio, io, os, enum, struct, collections, hashlib, ipaddress, socket, random, base64, itertools, hmac, heapq
 import pproxy
 from . import enums, message, crypto, ip
 from .__doc__ import *
@@ -436,8 +436,107 @@ class SPE_4500(IKE_500):
         else:
             print('unknown packet', data, addr)
 
+
+
+class WIREGUARD(asyncio.DatagramProtocol):
+    def __init__(self, args, sessions):
+        from nacl.public import PrivateKey
+        self.args = args
+        self.sessions = sessions
+        self.preshared_key = b'\x00'*32
+        self.ippacket = ip.IPPacket(args)
+        self.private_key = hashlib.blake2s(args.passwd.encode()).digest()
+        self.public_key = bytes(PrivateKey(self.private_key).public_key)
+        self.responders = {}
+        self.sender_index_generator = itertools.count()
+        print('======== WIREGUARD SETTING ========')
+        print('PublicKey:', base64.b64encode(self.public_key).decode())
+        print('===================================')
+    def connection_made(self, transport):
+        self.transport = transport
+    def datagram_received(self, data, addr):
+        from nacl import bindings
+        from nacl.public import PrivateKey
+        HASH = lambda x: hashlib.blake2s(x).digest()
+        MAC  = lambda key, x: hashlib.blake2s(x, key=key, digest_size=16).digest()
+        HMAC = lambda key, x: hmac.digest(key, x, hashlib.blake2s)
+        DH   = lambda pri, pub: bindings.crypto_scalarmult(pri, pub)
+        AEAD = lambda key, counter, plain_text, auth_text: bindings.crypto_aead_chacha20poly1305_ietf_encrypt(plain_text, auth_text, b'\x00\x00\x00\x00'+counter.to_bytes(8, 'little'), key)
+        AEAD_DECRYPT = lambda key, counter, cipher_text, auth_text: bindings.crypto_aead_chacha20poly1305_ietf_decrypt(cipher_text, auth_text, b'\x00\x00\x00\x00'+counter.to_bytes(8, 'little'), key)
+
+        if len(data) < 32:
+            return
+        cmd = int.from_bytes(data[0:4], 'little')
+        if cmd == 1:
+            if len(data) != 148:
+                return
+            p, mac1, mac2 = struct.unpack('<116s16s16s', data)
+            assert mac1 == MAC(HASH(b"mac1----" + self.public_key), p)
+            assert mac2 == b'\x00'*16
+            index = next(self.sender_index_generator)
+            sender_index, unencrypted_ephemeral, encrypted_static, encrypted_timestamp = struct.unpack('<4xI32s48s28s', data[:-32])
+
+            chaining_key = HASH(b"Noise_IKpsk2_25519_ChaChaPoly_BLAKE2s")
+            hash0 = HASH(HASH(HASH(chaining_key + b"WireGuard v1 zx2c4 Jason@zx2c4.com") + self.public_key) + unencrypted_ephemeral)
+            chaining_key = HMAC(HMAC(chaining_key, unencrypted_ephemeral), b"\x01")
+            temp = HMAC(chaining_key, DH(self.private_key, unencrypted_ephemeral))
+            chaining_key = HMAC(temp, b"\x01")
+            key = HMAC(temp, chaining_key + b"\x02")
+            static_public = AEAD_DECRYPT(key, 0, encrypted_static, hash0)
+            hash0 = HASH(hash0 + encrypted_static)
+            temp = HMAC(chaining_key, DH(self.private_key, static_public))
+            chaining_key = HMAC(temp, b"\x01")
+            key = HMAC(temp, chaining_key + b"\x02")
+            decrypted_timestamp = AEAD_DECRYPT(key, 0, encrypted_timestamp, hash0)
+            print('timestamp', decrypted_timestamp)
+            hash0 = HASH(hash0 + encrypted_timestamp)
+
+            ephemeral_private = os.urandom(32)
+            ephemeral_public = bytes(PrivateKey(ephemeral_private).public_key)
+            hash0 = HASH(hash0 + ephemeral_public)
+            chaining_key = HMAC(HMAC(chaining_key, ephemeral_public), b"\x01")
+            chaining_key = HMAC(HMAC(chaining_key, DH(ephemeral_private, unencrypted_ephemeral)), b"\x01")
+            chaining_key = HMAC(HMAC(chaining_key, DH(ephemeral_private, static_public)), b"\x01")
+            temp = HMAC(chaining_key, self.preshared_key)
+            chaining_key = HMAC(temp, b"\x01")
+            temp2 = HMAC(temp, chaining_key + b"\x02")
+            key = HMAC(temp, temp2 + b"\x03")
+            hash0 = HASH(hash0 + temp2)
+            encrypted_nothing = AEAD(key, 0, b"", hash0)
+            hash0 = HASH(hash0 + encrypted_nothing)
+
+            temp1 = HMAC(chaining_key, b"")
+            temp2 = HMAC(temp1, b"\x01")
+            temp3 = HMAC(temp1, temp2 + b"\x02")
+            self.responders[index] = [sender_index, temp2, 0, temp3, 0, []]
+            packet = struct.pack('<III32s16s', 2, index, sender_index, ephemeral_public, encrypted_nothing)
+            mac1 = MAC(HASH(b"mac1----" + static_public), packet)
+            mac2 = b'\x00'*16
+            msg = packet + mac1 + mac2
+            print('login', addr, sender_index)
+            self.transport.sendto(msg, addr)
+        elif cmd == 4:
+            _, receiver_index, counter = struct.unpack('<IIQ', data[:16])
+            packet = data[16:]
+            sender_index, receiving_key, receiving_key_counter, sending_key, sending_key_counter, msg_queue = self.responders[receiver_index]
+            encapsulated_packet = AEAD_DECRYPT(receiving_key, counter, packet, b'')
+            def reply(data):
+                counter = self.responders[receiver_index][4]
+                self.responders[receiver_index][4] += 1
+                data = data + b''*((-len(data))%16)
+                encrypted_encapsulated_packet = AEAD(sending_key, counter, data, b'')
+                msg = struct.pack('<IIQ', 4, sender_index, counter) + encrypted_encapsulated_packet
+                self.transport.sendto(msg, addr)
+                return True
+            if encapsulated_packet:
+                self.ippacket.handle_ipv4(addr[:2], encapsulated_packet, reply)
+            else:
+                reply(b'')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__description__, epilog=f'Online help: <{__url__}>')
+    parser.add_argument('-wg', dest='wireguard', default=None, type=int, help='start a wireguard vpn with port number (default: off)')
     parser.add_argument('-r', dest='rserver', default=[], action='append', type=pproxy.Connection, help='tcp remote server uri (default: direct)')
     parser.add_argument('-ur', dest='urserver', default=[], action='append', type=pproxy.Connection, help='udp remote server uri (default: direct)')
     parser.add_argument('-s', dest='salgorithm', default='fa', choices=('fa', 'rr', 'rc', 'lc'), help='scheduling algorithm (default: first_available)')
@@ -453,14 +552,21 @@ def main():
     transport1, _ = loop.run_until_complete(loop.create_datagram_endpoint(lambda: IKE_500(args, sessions), ('0.0.0.0', 500)))
     transport2, _ = loop.run_until_complete(loop.create_datagram_endpoint(lambda: SPE_4500(args, sessions), ('0.0.0.0', 4500)))
     print('Serving on UDP :500 :4500...')
+    if args.wireguard:
+        transport3, _ = loop.run_until_complete(loop.create_datagram_endpoint(lambda: WIREGUARD(args, sessions), ('0.0.0.0', args.wireguard)))
+        print(f'Serving on UDP :{args.wireguard} WIREGUARD')
+    else:
+        transport3 = None
     try:
         loop.run_forever()
     except KeyboardInterrupt:
         print('exit')
-    for task in asyncio.Task.all_tasks():
+    for task in asyncio.all_tasks(loop) if hasattr(asyncio, 'all_tasks') else asyncio.Task.all_tasks():
         task.cancel()
     transport1.close()
     transport2.close()
+    if transport3:
+        transport3.close()
     loop.run_until_complete(loop.shutdown_asyncgens())
     loop.close()
 

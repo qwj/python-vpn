@@ -5,10 +5,11 @@ SMSS = 1350
 
 def parse_ipv4(data):
     ihl = data[0]&0x0f
+    length = int.from_bytes(data[2:4], 'big')
     proto = enums.IpProto(data[9])
     src_ip = ipaddress.ip_address(data[12:16])
     dst_ip = ipaddress.ip_address(data[16:20])
-    body = data[ihl<<2:]
+    body = data[ihl<<2:length]
     return proto, src_ip, dst_ip, body
 
 def checksum(data):
@@ -114,7 +115,7 @@ class Control(enum.IntFlag):
     URG = 0x20
 
 class TCPStack:
-    def __init__(self, src_ip, src_port, dst_ip, dst_name, dst_port, reply, tcp_conn):
+    def __init__(self, src_ip, src_port, dst_ip, dst_name, dst_port, reply, tcp_conn, verbose):
         self.src_ip = src_ip
         self.src_port = src_port
         self.dst_ip = dst_ip
@@ -139,6 +140,13 @@ class TCPStack:
         self.rto = 3
         self.srtt = self.rttvar = None
         self.update = time.perf_counter()
+        self.verbose = verbose
+    def logwrite(self, data):
+        if self.verbose:
+            print(f'TCP WRITE {self.dst_name}:{self.dst_port} {data}')
+    def logread(self, data):
+        if self.verbose:
+            print(f'TCP READ {self.dst_name}:{self.dst_port} {data}')
     def obsolete(self):
         return self.state == State.CLOSED or time.perf_counter() - self.update > 600
     def close(self):
@@ -264,11 +272,13 @@ class TCPStack:
                 if seq+len(tcp_body) <= self.src_seq:
                     pass
                 elif seq <= self.src_seq:
+                    self.logwrite(tcp_body[self.src_seq-seq:])
                     self.writer.write(tcp_body[self.src_seq-seq:])
                     self.src_seq = seq+len(tcp_body)
                     while self.src_win and self.src_win[0][0] <= self.src_seq:
                         seq, tcp_body = heapq.heappop(self.src_win)
                         if seq+len(tcp_body) > self.src_seq:
+                            self.logwrite(tcp_body[self.src_seq-seq:])
                             self.writer.write(tcp_body[self.src_seq-seq:])
                             self.src_seq = seq+len(tcp_body)
                 elif seq-self.src_seq < 0x20000000:
@@ -333,6 +343,8 @@ class TCPStack:
                 data = None
             if not data:
                 break
+            self.logread(data)
+            # print(f'TCP READ {self.dst_name}:{self.dst_port} {data}')
             data = bytearray(data)
             while data:
                 if self.dst_seq-self.dst_ack > min(self.cwnd, self.rwnd):
@@ -369,6 +381,7 @@ class IPPacket:
         self.rserver = args.rserver
         self.urserver = args.urserver
         self.DIRECT = args.DIRECT
+        self.verbose = bool(args.v)
     def schedule(self, host_name, udp=False):
         rserver = self.urserver if udp else self.rserver
         filter_cond = lambda o: o.alive and (not o.match or o.match(host_name))
@@ -397,7 +410,8 @@ class IPPacket:
                 try:
                     record = dns.DNSRecord.unpack(udp_body)
                     answer = self.dns_cache.query(record) if self.dns_cache else None
-                    print(f'DNS {remote_id[0]}:{src_port}{option.logtext(dst_name, dst_port)} Query={record.q.qname}{" (Cached)" if answer else ""}')
+                    if self.verbose:
+                        print(f'DNS {remote_id[0]}:{src_port}{option.logtext(dst_name, dst_port)} Query={record.q.qname}{" (Cached)" if answer else ""}')
                     if answer:
                         ip_body = make_udp(dst_port, src_port, answer.pack())
                         data = make_ipv4(proto, dst_ip, src_ip, ip_body)
@@ -406,14 +420,17 @@ class IPPacket:
                 except Exception as e:
                     print(e)
             else:
-                print(f'UDP {remote_id[0]}:{src_port}{option.logtext(dst_name, dst_port)} Length={len(udp_body)}')
+                if self.verbose:
+                    print(f'UDP {remote_id[0]}:{src_port}{option.logtext(dst_name, dst_port)} Length={len(udp_body)}')
             def udp_reply(udp_body):
                 if dst_port == 53:
                     record = dns.DNSRecord.unpack(udp_body)
                     self.dns_cache.answer(record) if self.dns_cache else None
-                    print(f'DNS {remote_id[0]}:{src_port}{option.logtext(dst_name, dst_port).replace("->","<-")} Answer=['+' '.join(f'{r.rname}->{r.rdata}' for r in record.rr)+']')
+                    if self.verbose:
+                        print(f'DNS {remote_id[0]}:{src_port}{option.logtext(dst_name, dst_port).replace("->","<-")} Answer=['+' '.join(f'{r.rname}->{r.rdata}' for r in record.rr)+']')
                 else:
-                    print(f'UDP {remote_id[0]}:{src_port}{option.logtext(dst_name, dst_port).replace("->","<-")} Length={len(udp_body)}')
+                    if self.verbose:
+                        print(f'UDP {remote_id[0]}:{src_port}{option.logtext(dst_name, dst_port).replace("->","<-")} Length={len(udp_body)}')
                 ip_body = make_udp(dst_port, src_port, udp_body)
                 data = make_ipv4(proto, dst_ip, src_ip, ip_body)
                 reply(data)
@@ -430,17 +447,19 @@ class IPPacket:
                 for spi, tcp in list(self.tcp_stack.items()):
                     if tcp.obsolete():
                         self.tcp_stack.pop(spi)
-                self.tcp_stack[key] = tcp = TCPStack(src_ip, src_port, dst_ip, dst_name, dst_port, reply, option)
+                self.tcp_stack[key] = tcp = TCPStack(src_ip, src_port, dst_ip, dst_name, dst_port, reply, option, self.verbose)
                 #print(f'TCP Connections = {len(self.tcp_stack)}')
             tcp.parse(ip_body)
         elif proto == enums.IpProto.ICMP:
             icmptp, code, icmp_body = parse_icmp(ip_body)
             if icmptp == 0:
                 tid, seq = struct.unpack('>HH', ip_body[4:8])
-                print(f'PING {remote_id[0]} -> {dst_name} Id={tid} Seq={seq} Data={icmp_body}')
+                if self.verbose:
+                    print(f'PING {remote_id[0]} -> {dst_name} Id={tid} Seq={seq} Data={icmp_body}')
             elif icmptp == 8:
                 tid, seq = struct.unpack('>HH', ip_body[4:8])
-                print(f'ECHO {remote_id[0]} -> {dst_name} Id={tid} Seq={seq} Data={icmp_body}')
+                if self.verbose:
+                    print(f'ECHO {remote_id[0]} -> {dst_name} Id={tid} Seq={seq} Data={icmp_body}')
                 # NEED ROOT PRIVILEGE TO SEND ICMP PACKET
                 # a = socket.socket(socket.AF_INET, socket.SOCK_RAW, proto)
                 # a.sendto(icmp_body, (dst_name, 1))
@@ -448,9 +467,11 @@ class IPPacket:
             elif icmptp == 3 and code == 3:
                 eproto, esrc_ip, edst_ip, eip_body = parse_ipv4(icmp_body)
                 eport = int.from_bytes(eip_body[2:4], 'big')
-                print(f'ICMP {remote_id[0]} -> {dst_name} {eproto.name} :{eport} Denied')
+                if self.verbose:
+                    print(f'ICMP {remote_id[0]} -> {dst_name} {eproto.name} :{eport} Denied')
             else:
-                print(f'ICMP {remote_id[0]} -> {dst_name} Data={ip_body}')
+                if self.verbose:
+                    print(f'ICMP {remote_id[0]} -> {dst_name} Data={ip_body}')
         else:
             print(f'{enums.IpProto(proto).name} -> {dst_name} Data={data}')
     def handle_l2tp(self, remote_id, data, reply):

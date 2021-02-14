@@ -37,6 +37,7 @@ setup(
     ],
     install_requires    = [
         'pycryptodome >= 3.7.2',
+        'pynacl >= 1.4.0',
         'pproxy >= 2.0.0',
     ],
     entry_points        = {

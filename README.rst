@@ -1,7 +1,7 @@
 python-esp
 ============
 
-IPSec IKE(v1,v2) PSK implemented in pure Python. **(For Research Purposes Only)**
+IPSec IKE(v1,v2) WireGuard PSK implemented in pure Python. **(For Research Purposes Only)**
 
 Introduction
 ------------
@@ -51,6 +51,8 @@ Protocols
 +-------------------+----------------+-------------------+----------------+------------------+
 | IKEv2 PSK ✔       | IKEv2 **[2]**  | "IPSec IKEv2 PSK" | IKEv2          | IKEv2            |
 +-------------------+----------------+-------------------+----------------+------------------+
+| WireGuard ✔       | WireGuard App                                                          |
++-------------------+----------------+-------------------+----------------+------------------+
 
 | **[1]** Do not use certificates
 | **[2]** Turn off "user authentication"
@@ -94,5 +96,9 @@ L2TP
 + `RFC1549 <https://tools.ietf.org/html/rfc1549>`_ PPP in HDLC Framing
 + `RFC1661 <https://tools.ietf.org/html/rfc1661>`_ The Point-to-Point Protocol (PPP)
 + `RFC1332 <https://tools.ietf.org/html/rfc1332>`_ The PPP Internet Protocol Control Protocol (IPCP)
+
+WireGuard
+
++ `WireGuard <https://www.wireguard.com/protocol/>`_ Protocol Specification
 
 
