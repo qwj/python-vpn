@@ -382,9 +382,9 @@ class IPPacket:
         self.urserver = args.urserver
         self.DIRECT = args.DIRECT
         self.verbose = bool(args.v)
-    def schedule(self, host_name, udp=False):
+    def schedule(self, host_name, port, udp=False):
         rserver = self.urserver if udp else self.rserver
-        filter_cond = lambda o: o.alive and (not o.match or o.match(host_name))
+        filter_cond = lambda o: o.alive and (not o.match or o.match(host_name) or o.match(str(port)))
         if self.salgorithm == 'fa':
             return next(filter(filter_cond, rserver), None)
         elif self.salgorithm == 'rr':
@@ -403,8 +403,8 @@ class IPPacket:
         proto, src_ip, dst_ip, ip_body = parse_ipv4(data)
         dst_name = self.dns_cache.ip2domain(str(dst_ip)) if self.dns_cache else str(dst_ip)
         if proto == enums.IpProto.UDP:
-            option = self.schedule(dst_name, udp=True) or self.DIRECT
             src_port, dst_port, udp_body = parse_udp(ip_body)
+            option = self.schedule(dst_name, dst_port, udp=True) or self.DIRECT
             key = (remote_id[0], remote_id[1], src_port)
             if dst_port == 53:
                 try:
@@ -442,7 +442,7 @@ class IPPacket:
             if tcp is None:
                 if flag & Control.SYN == 0:
                     return
-                option = self.schedule(dst_name) or self.DIRECT
+                option = self.schedule(dst_name, dst_port) or self.DIRECT
                 print(f'TCP {remote_id[0]}:{src_port}{option.logtext(dst_name, dst_port)}')
                 for spi, tcp in list(self.tcp_stack.items()):
                     if tcp.obsolete():

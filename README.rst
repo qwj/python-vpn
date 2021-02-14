@@ -63,6 +63,25 @@ Protocols
 | **[2]** Turn off "user authentication"
 | **[3]** Turn off "preshared key"
 
+Examples
+--------
+
+- TCP Tunnel
+
+  .. code:: rst
+
+    If the remote host match in file "rules.country", tunnel through http proxy.
+
+    $ pvpn -r http://remote_server:port?rules.country
+
+- UDP Tunnel
+
+  .. code:: rst
+
+    Redirect all DNS requests to 8.8.8.8.
+
+    $ pvpn -ur tunnel://8.8.8.8:53?{53}
+
 Specifications
 --------------
 
