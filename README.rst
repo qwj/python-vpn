@@ -1,6 +1,17 @@
 python-vpn
 ============
 
+|made-with-python| |PyPI-version| |Hit-Count| |Downloads|
+
+.. |made-with-python| image:: https://img.shields.io/badge/Made%20with-Python-1f425f.svg
+   :target: https://www.python.org/
+.. |PyPI-version| image:: https://badge.fury.io/py/pvpn.svg
+   :target: https://pypi.python.org/pypi/pvpn/
+.. |Hit-Count| image:: http://hits.dwyl.io/qwj/python-vpn.svg
+   :target: https://pypi.python.org/pypi/pvpn/
+.. |Downloads| image:: https://pepy.tech/badge/pvpn
+   :target: https://pepy.tech/project/pvpn
+
 VPN Server implemented in pure Python. **(For Research Purposes Only)**
 
 Introduction
