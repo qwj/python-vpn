@@ -491,10 +491,10 @@ class WIREGUARD(asyncio.DatagramProtocol):
             self.transport.sendto(msg, addr)
             print('login', addr, sender_index)
 
-            temp1 = HMAC(chaining_key, b"")
-            temp2 = HMAC(temp1, b"\x01")
-            temp3 = HMAC(temp1, temp2 + b"\x02")
-            self.keys[index] = [sender_index, temp2, temp3]
+            temp = HMAC(chaining_key, b"")
+            receiving_key = HMAC(temp, b"\x01")
+            sending_key = HMAC(temp, receiving_key + b"\x02")
+            self.keys[index] = (sender_index, receiving_key, sending_key)
             self.index_generators[index] = itertools.count()
         elif cmd == 4 and len(data) >= 32:
             _, index, counter = struct.unpack('<IIQ', data[:16])
@@ -502,7 +502,7 @@ class WIREGUARD(asyncio.DatagramProtocol):
             packet = crypto.aead_chacha20poly1305_decrypt(receiving_key, counter, data[16:], b'')
             def reply(data):
                 counter = next(self.index_generators[index])
-                data = data + b''*((-len(data))%16)
+                data = data + b'\x00'*((-len(data))%16)
                 msg = crypto.aead_chacha20poly1305_encrypt(sending_key, counter, data, b'')
                 msg = struct.pack('<IIQ', 4, sender_index, counter) + msg
                 self.transport.sendto(msg, addr)

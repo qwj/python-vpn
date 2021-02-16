@@ -43,6 +43,8 @@ QuickStart
 
 Open server's UDP port :500 :4500 to your device. In device's system setting, add an "IPSec" (iOS) or "IPSec IKE PSK" (Android) node, write down the server address and password "yourpassword". Connect.
 
+If you prefer wireguard VPN, specify "-wg (port)" parameter and open server's (port) UDP port to your device. Paste the printed server public key to wireguard client settings, write down the server address:port. Connect.
+
 You should modify the default password "test" with a good one. See "pvpn -h" for more options.
 
 Features
@@ -50,9 +52,9 @@ Features
 
 - Clean, lightweight
 - IKEv1, IKEv2, L2TP auto-detection
-- WireGuard support
-- TCP stack implementation
-- TCP/UDP tunnel support
+- WireGuard
+- TCP stack
+- TCP/UDP tunnel
 - DNS cache
 
 Protocols

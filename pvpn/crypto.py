@@ -126,6 +126,18 @@ class Crypto:
         checksum = self.integrity.compute(self.sk_a, encrypted[:len(encrypted)-self.integrity.hash_size])
         encrypted[len(encrypted)-len(checksum):] = checksum
 
+def aead_chacha20poly1305_encrypt(key, counter, plain_text, auth_text):
+    cipher = ChaCha20_Poly1305.new(key=key, nonce=b'\x00\x00\x00\x00'+counter.to_bytes(8, 'little'))
+    cipher.update(auth_text)
+    cipher_text, digest = cipher.encrypt_and_digest(plain_text)
+    return cipher_text+digest
+
+def aead_chacha20poly1305_decrypt(key, counter, cipher_text, auth_text):
+    cipher = ChaCha20_Poly1305.new(key=key, nonce=b'\x00\x00\x00\x00'+counter.to_bytes(8, 'little'))
+    cipher.update(auth_text)
+    return cipher.decrypt_and_verify(cipher_text[:-16], cipher_text[-16:])
+
+# DH and ECDH algorithms
 
 def ec_add(P, Q, l, p, a):
     if P == 0:
@@ -145,8 +157,8 @@ def ec_mul(P, l, i, p, a):
         i, P = i>>1, ec_add(P, P, l<<3, p, a)
     return r
 
-def dhscalar(k, u, p, a24, bits):
-    x_2, z_2, x_3, z_3, swap = 1, 0, u, 1, 0
+def ec_scalar(k, u, p, a24, bits):
+    x_2, x_3, z_2, z_3, swap = 1, u, 0, 1, 0
     for t in range(bits-1, -1, -1):
         k_t = (k >> t) & 1
         if swap^k_t:
@@ -166,12 +178,12 @@ def dhscalar(k, u, p, a24, bits):
 def X25519(k, u):
     u, k = int.from_bytes(u, 'little') if isinstance(u, bytes) else u, int.from_bytes(k, 'little')
     k = k & ((1 << 256) - (1 << 255) - 8) | (1 << 254)
-    return dhscalar(k, u, 2**255-19, 121665, 255).to_bytes(32, 'little')
+    return ec_scalar(k, u, 2**255-19, 121665, 255).to_bytes(32, 'little')
 
 def X448(k, u):
     u, k = int.from_bytes(u, 'little') if isinstance(u, bytes) else u, int.from_bytes(k, 'little')
     k = k & (-4) | (1 << 447)
-    return dhscalar(k, u, 2**448-2**224-1, 39081, 448).to_bytes(56, 'little')
+    return ec_scalar(k, u, 2**448-2**224-1, 39081, 448).to_bytes(56, 'little')
 
 PRIMES = {
     enums.DhId.DH_1: (0xFFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A63A3620FFFFFFFFFFFFFFFF, 2, 96),
@@ -209,15 +221,4 @@ def DiffieHellman(group, peer):
         return ec_mul(g[0], l, a, p, g[1]).to_bytes(l*2, 'big'), ec_mul(int.from_bytes(peer, 'big'), l, a, p, g[1]).to_bytes(l*2, 'big')[:l]
     else:
         return pow(g, a, p).to_bytes(l, 'big'), pow(int.from_bytes(peer, 'big'), a, p).to_bytes(l, 'big')
-
-def aead_chacha20poly1305_encrypt(key, counter, plain_text, auth_text):
-    cipher = ChaCha20_Poly1305.new(key=key, nonce=b'\x00\x00\x00\x00'+counter.to_bytes(8, 'little'))
-    cipher.update(auth_text)
-    cipher_text, digest = cipher.encrypt_and_digest(plain_text)
-    return cipher_text+digest
-
-def aead_chacha20poly1305_decrypt(key, counter, cipher_text, auth_text):
-    cipher = ChaCha20_Poly1305.new(key=key, nonce=b'\x00\x00\x00\x00'+counter.to_bytes(8, 'little'))
-    cipher.update(auth_text)
-    return cipher.decrypt_and_verify(cipher_text[:-16], cipher_text[-16:])
 

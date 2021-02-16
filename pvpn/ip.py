@@ -142,10 +142,10 @@ class TCPStack:
         self.update = time.perf_counter()
         self.verbose = verbose
     def logwrite(self, data):
-        if self.verbose:
+        if self.verbose >= 2:
             print(f'TCP WRITE {self.dst_name}:{self.dst_port} {data}')
     def logread(self, data):
-        if self.verbose:
+        if self.verbose >= 2:
             print(f'TCP READ {self.dst_name}:{self.dst_port} {data}')
     def obsolete(self):
         return self.state == State.CLOSED or time.perf_counter() - self.update > 600
@@ -381,7 +381,7 @@ class IPPacket:
         self.rserver = args.rserver
         self.urserver = args.urserver
         self.DIRECT = args.DIRECT
-        self.verbose = bool(args.v)
+        self.verbose = args.v if args.v else 0
     def schedule(self, host_name, port, udp=False):
         rserver = self.urserver if udp else self.rserver
         filter_cond = lambda o: o.alive and (not o.match or o.match(host_name) or o.match(str(port)))
