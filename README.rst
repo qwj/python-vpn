@@ -135,6 +135,7 @@ L2TP
 
 WireGuard
 
++ `RFC7748 <https://tools.ietf.org/html/rfc7748>`_ Elliptic Curves for Security
 + `WireGuard <https://www.wireguard.com/protocol/>`_ Protocol Specification
 
 
