@@ -1,4 +1,4 @@
-import argparse, asyncio, io, os, enum, struct, collections, hashlib, ipaddress, socket, random, base64, itertools, hmac, heapq
+import argparse, asyncio, io, os, enum, struct, collections, hashlib, ipaddress, socket, random, base64, itertools, hmac
 import pproxy
 from . import enums, message, crypto, ip
 from .__doc__ import *

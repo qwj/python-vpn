@@ -384,7 +384,7 @@ class IPPacket:
         self.verbose = args.v if args.v else 0
     def schedule(self, host_name, port, udp=False):
         rserver = self.urserver if udp else self.rserver
-        filter_cond = lambda o: o.alive and (not o.match or o.match(host_name) or o.match(str(port)))
+        filter_cond = lambda o: o.alive and o.match_rule(host_name, port)
         if self.salgorithm == 'fa':
             return next(filter(filter_cond, rserver), None)
         elif self.salgorithm == 'rr':
