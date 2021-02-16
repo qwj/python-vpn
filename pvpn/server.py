@@ -525,7 +525,7 @@ def main():
     parser.add_argument('-v', dest='v', action='count', help='print verbose output')
     parser.add_argument('--version', action='version', version=f'{__title__} {__version__}')
     args = parser.parse_args()
-    args.DIRECT = pproxy.Connection('direct://')
+    args.DIRECT = pproxy.DIRECT
     loop = asyncio.get_event_loop()
     sessions = {}
     transport1, _ = loop.run_until_complete(loop.create_datagram_endpoint(lambda: IKE_500(args, sessions), ('0.0.0.0', 500)))

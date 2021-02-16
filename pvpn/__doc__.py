@@ -1,5 +1,5 @@
 __title__       = "pvpn"
-__version__     = "0.2.4"
+__version__     = "0.2.5"
 __license__     = "MIT"
 __description__ = "Python VPN server."
 __keywords__    = "vpn ike esp ip tcp udp wireguard"

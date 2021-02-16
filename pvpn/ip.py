@@ -338,7 +338,7 @@ class TCPStack:
         self.wait_ack.set()
         while True:
             try:
-                data = await reader.read_()
+                data = await reader.read(65536)
             except Exception:
                 data = None
             if not data:
