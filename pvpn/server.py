@@ -121,9 +121,12 @@ class IKEv1Session:
                 self.state = State.AUTH_SET
             elif enums.CPAttrType.INTERNAL_IP4_ADDRESS in payload_cp.attrs:
                 assert self.state == State.AUTH_SET
-                attrs = { enums.CPAttrType.INTERNAL_IP4_ADDRESS: ipaddress.ip_address('10.0.0.1').packed,
-                          enums.CPAttrType.INTERNAL_IP4_DNS: ipaddress.ip_address(self.args.dns).packed,
-                        }
+                if self.args.dns != 'off':
+                    attrs = { enums.CPAttrType.INTERNAL_IP4_ADDRESS: ipaddress.ip_address('10.0.0.1').packed,
+                        enums.CPAttrType.INTERNAL_IP4_DNS: ipaddress.ip_address(self.args.dns).packed,
+                    }
+                else:
+                    attrs = { enums.CPAttrType.INTERNAL_IP4_ADDRESS: ipaddress.ip_address('10.0.0.1').packed,}
                 response_payloads = [ message.PayloadCP_1(enums.CFGType.CFG_REPLY, attrs, identifier=payload_cp.identifier) ]
                 self.state = State.CONF_SENT
             elif payload_cp.cftype == enums.CFGType.CFG_ACK:
@@ -307,8 +310,11 @@ class IKEv2Session:
                                   response_payload_idr,
                                   message.PayloadAUTH(enums.AuthMethod.PSK, auth_data) ]
             if request.get_payload(enums.Payload.CP):
-                attrs = { enums.CPAttrType.INTERNAL_IP4_ADDRESS: ipaddress.ip_address('1.0.0.1').packed,
-                          enums.CPAttrType.INTERNAL_IP4_DNS: ipaddress.ip_address(self.args.dns).packed, }
+                if self.args.dns != 'off':
+                    attrs = { enums.CPAttrType.INTERNAL_IP4_ADDRESS: ipaddress.ip_address('10.0.0.1').packed,
+                        enums.CPAttrType.INTERNAL_IP4_DNS: ipaddress.ip_address(self.args.dns).packed, }
+                else:
+                    attrs = { enums.CPAttrType.INTERNAL_IP4_ADDRESS: ipaddress.ip_address('10.0.0.1').packed,}
                 response_payloads.append(message.PayloadCP(enums.CFGType.CFG_REPLY, attrs))
             reply(self.response(enums.Exchange.IKE_AUTH, response_payloads, crypto=self.my_crypto))
             self.state = State.ESTABLISHED
@@ -520,19 +526,20 @@ def main():
     parser.add_argument('-ur', dest='urserver', default=[], action='append', type=pproxy.Connection, help='udp remote server uri (default: direct)')
     parser.add_argument('-s', dest='salgorithm', default='fa', choices=('fa', 'rr', 'rc', 'lc'), help='scheduling algorithm (default: first_available)')
     parser.add_argument('-p', dest='passwd', default='test', help='password (default: test)')
-    parser.add_argument('-dns', dest='dns', default='1.1.1.1', help='dns server (default: 1.1.1.1)')
+    parser.add_argument('-dns', dest='dns', default='off', help='dns server (default: off)')
     parser.add_argument('-nc', dest='nocache', default=None, action='store_true', help='do not cache dns (default: off)')
     parser.add_argument('-v', dest='v', action='count', help='print verbose output')
+    parser.add_argument('-l', dest='listen', default='0.0.0.0', help='Ip bind connection')
     parser.add_argument('--version', action='version', version=f'{__title__} {__version__}')
     args = parser.parse_args()
     args.DIRECT = pproxy.DIRECT
     loop = asyncio.get_event_loop()
     sessions = {}
-    transport1, _ = loop.run_until_complete(loop.create_datagram_endpoint(lambda: IKE_500(args, sessions), ('0.0.0.0', 500)))
-    transport2, _ = loop.run_until_complete(loop.create_datagram_endpoint(lambda: SPE_4500(args, sessions), ('0.0.0.0', 4500)))
+    transport1, _ = loop.run_until_complete(loop.create_datagram_endpoint(lambda: IKE_500(args, sessions), (args.listen, 500)))
+    transport2, _ = loop.run_until_complete(loop.create_datagram_endpoint(lambda: SPE_4500(args, sessions), (args.listen, 4500)))
     print('Serving on UDP :500 :4500...')
     if args.wireguard:
-        transport3, _ = loop.run_until_complete(loop.create_datagram_endpoint(lambda: WIREGUARD(args), ('0.0.0.0', args.wireguard)))
+        transport3, _ = loop.run_until_complete(loop.create_datagram_endpoint(lambda: WIREGUARD(args), (args.listen, args.wireguard)))
         print(f'Serving on UDP :{args.wireguard} (WIREGUARD)...')
     else:
         transport3 = None
